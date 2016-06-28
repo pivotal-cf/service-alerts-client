@@ -20,6 +20,7 @@ import (
 var _ = Describe("send-service-alert executable", func() {
 	var (
 		notificationServer *ghttp.Server
+		uaaServer          *ghttp.Server
 		runningBin         *gexec.Session
 		configFilePath     string
 		spaceGuid          = "some-space"
@@ -30,10 +31,25 @@ var _ = Describe("send-service-alert executable", func() {
 		content            = "some content"
 		uaaClientID        = "some-client-id"
 		uaaClientSecret    = "some-client-secret"
+		token              = "a-token"
 	)
 
 	BeforeEach(func() {
 		notificationServer = ghttp.NewServer()
+		uaaServer = ghttp.NewServer()
+
+		uaaServer.AppendHandlers(ghttp.CombineHandlers(
+			ghttp.VerifyRequest("POST", "/oauth/token", ""),
+			ghttp.VerifyBasicAuth(uaaClientID, uaaClientSecret),
+			ghttp.VerifyFormKV("grant_type", "client_credentials"),
+			ghttp.RespondWithJSONEncoded(http.StatusOK, map[string]interface{}{
+				"access_token": token,
+				"token_type":   "bearer",
+				"expires_in":   43199,
+				"scope":        "clients.read password.write clients.secret clients.write uaa.admin scim.write scim.read",
+				"jti":          "a-token",
+			}, http.Header{}),
+		))
 
 		configFile, err := ioutil.TempFile("", "service-alerts-integration-tests")
 		Expect(err).NotTo(HaveOccurred())
@@ -46,7 +62,7 @@ var _ = Describe("send-service-alert executable", func() {
 				ReplyTo:     replyTo,
 				Authentication: client.Authentication{
 					UAA: client.UAA{
-						URL:          "DOES_NOT_MATTER_UNTIL_WE_GET_REAL_TOKENS",
+						URL:          uaaServer.HTTPTestServer.URL,
 						ClientID:     uaaClientID,
 						ClientSecret: uaaClientSecret,
 					},
@@ -72,7 +88,7 @@ var _ = Describe("send-service-alert executable", func() {
 				ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGuid)),
 				ghttp.VerifyHeader(http.Header{
 					"X-NOTIFICATIONS-VERSION": {"1"},
-					"Authorization":           {"Bearer GET_ME_FROM_UAA"},
+					"Authorization":           {fmt.Sprintf("Bearer %s", token)},
 				}),
 				ghttp.VerifyJSON(sendNotificationReqBody),
 			),
@@ -81,6 +97,7 @@ var _ = Describe("send-service-alert executable", func() {
 
 	AfterEach(func() {
 		notificationServer.Close()
+		uaaServer.Close()
 		Expect(os.Remove(configFilePath)).To(Succeed())
 	})
 
@@ -101,6 +118,10 @@ var _ = Describe("send-service-alert executable", func() {
 
 	It("exits with 0", func() {
 		Expect(runningBin.ExitCode()).To(Equal(0))
+	})
+
+	It("obtains a token from UAA", func() {
+		Expect(uaaServer.ReceivedRequests()).To(HaveLen(1))
 	})
 
 	It("calls the notification service", func() {

@@ -8,3 +8,7 @@ type SpaceNotificationRequest struct {
 	Text    string `json:"text"`
 	ReplyTo string `json:"reply_to"`
 }
+
+type UAATokenResponse struct {
+	Token string `json:"access_token"`
+}
