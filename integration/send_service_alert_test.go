@@ -26,7 +26,7 @@ var _ = Describe("send-service-alert executable", func() {
 		spaceGuid          = "some-space"
 		product            = "some-product"
 		subject            = "some-subject"
-		serviceInstanceID  = "some-service-instance"
+		serviceInstanceID  string
 		replyTo            string
 		content            = "some content"
 		uaaClientID        = "some-client-id"
@@ -38,6 +38,7 @@ var _ = Describe("send-service-alert executable", func() {
 		notificationServer = ghttp.NewServer()
 		uaaServer = ghttp.NewServer()
 		replyTo = "foo@bar.com"
+		serviceInstanceID = "some-service-instance"
 	})
 
 	AfterEach(func() {
@@ -160,6 +161,39 @@ var _ = Describe("send-service-alert executable", func() {
 					"subject": "[Service Alert][%s] %s",
 					"text": "%s"
 					}`, client.DummyKindID, product, subject, text)
+
+				notificationServer.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGuid)),
+						ghttp.VerifyHeader(http.Header{
+							"X-NOTIFICATIONS-VERSION": {"1"},
+							"Authorization":           {fmt.Sprintf("Bearer %s", token)},
+						}),
+						ghttp.VerifyJSON(sendNotificationReqBody),
+					),
+				)
+			})
+
+			It("exits with 0", func() {
+				Expect(runningBin.ExitCode()).To(Equal(0))
+			})
+
+			It("calls the notification service", func() {
+				Expect(notificationServer.ReceivedRequests()).To(HaveLen(1))
+			})
+		})
+		Context("when service instance id is not configured", func() {
+			BeforeEach(func() {
+				serviceInstanceID = ""
+
+				// newlines must be encoded in json string literal
+				text := fmt.Sprintf(`Alert from %s:\n\n%s`, product, content)
+				sendNotificationReqBody := fmt.Sprintf(`{
+					"kind_id": "%s",
+					"subject": "[Service Alert][%s] %s",
+					"text": "%s",
+					"reply_to": "%s"
+					}`, client.DummyKindID, product, subject, text, replyTo)
 
 				notificationServer.AppendHandlers(
 					ghttp.CombineHandlers(
