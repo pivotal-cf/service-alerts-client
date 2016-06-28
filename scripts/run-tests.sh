@@ -1,3 +1,3 @@
 #!/bin/bash -eu
 
-ginkgo -randomizeSuites=true -randomizeAllSpecs=true -keepGoing=true -r "$@"
+(cd $(dirname $0)/.. && ginkgo -randomizeSuites=true -randomizeAllSpecs=true -keepGoing=true -r "$@")

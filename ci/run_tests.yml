@@ -1,0 +1,14 @@
+---
+platform: linux
+
+image_resource:
+  type: docker-image
+  source: {repository: pcfservicesenablement/services-enablement-ci}
+
+inputs:
+  - name: service-alerts-client
+    path: src/github.com/pivotal-cf/service-alerts-client
+
+run:
+  path: bash
+  args: ["-c", "GOPATH=$(pwd) src/github.com/pivotal-cf/service-alerts-client/scripts/run-tests.sh"]
