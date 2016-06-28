@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"net/url"
+	"path"
 	"strings"
 	"time"
 
@@ -22,7 +25,11 @@ func New(config Config) *ServiceAlertsClient {
 func (c *ServiceAlertsClient) SendServiceAlert(product, subject, serviceInstanceID, content string) error {
 	httpClient := herottp.New(herottp.Config{Timeout: time.Second * 30})
 
-	uaaTokenReq, err := http.NewRequest("POST", fmt.Sprintf("%s/oauth/token", c.config.NotificationTarget.Authentication.UAA.URL), strings.NewReader("grant_type=client_credentials"))
+	uaaURL, err := joinURL(c.config.NotificationTarget.Authentication.UAA.URL, "/oauth/token")
+	if err != nil {
+		return err
+	}
+	uaaTokenReq, err := http.NewRequest("POST", uaaURL, strings.NewReader("grant_type=client_credentials"))
 	if err != nil {
 		return err
 	}
@@ -31,14 +38,15 @@ func (c *ServiceAlertsClient) SendServiceAlert(product, subject, serviceInstance
 
 	uaaTokenResp, err := httpClient.Do(uaaTokenReq)
 	if err != nil {
-		// TODO test reponse error
 		return err
 	}
 	defer uaaTokenResp.Body.Close()
-	// TODO test for 200
+	if uaaTokenResp.StatusCode != http.StatusOK {
+		respBody, err := ioutil.ReadAll(uaaTokenResp.Body)
+		return fmt.Errorf("UAA expected to return HTTP 200, got %d. Body: %s%s\n", uaaTokenResp.StatusCode, string(respBody), err)
+	}
 	var uaaTokenRespBody UAATokenResponse
 	if err := json.NewDecoder(uaaTokenResp.Body).Decode(&uaaTokenRespBody); err != nil {
-		// TODO test for bad body
 		return err
 	}
 
@@ -52,7 +60,9 @@ func (c *ServiceAlertsClient) SendServiceAlert(product, subject, serviceInstance
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest("POST", fmt.Sprintf("%s/spaces/%s", c.config.NotificationTarget.URL, c.config.NotificationTarget.CFSpaceGUID), bytes.NewReader(reqBytes))
+
+	sendNotificationRequestURL, err := joinURL(c.config.NotificationTarget.URL, fmt.Sprintf("/spaces/%s", c.config.NotificationTarget.CFSpaceGUID))
+	req, err := http.NewRequest("POST", sendNotificationRequestURL, bytes.NewReader(reqBytes))
 	if err != nil {
 		return err
 	}
@@ -60,6 +70,22 @@ func (c *ServiceAlertsClient) SendServiceAlert(product, subject, serviceInstance
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", uaaTokenRespBody.Token))
 	req.Header.Set("Content-Type", "application/json")
 
-	_, err = httpClient.Do(req)
-	return err
+	sendNotificationResponse, err := httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	if sendNotificationResponse.StatusCode != http.StatusOK {
+		respBody, err := ioutil.ReadAll(sendNotificationResponse.Body)
+		return fmt.Errorf("UAA expected to return HTTP 200, got %d. Body: %s%s\n", sendNotificationResponse.StatusCode, string(respBody), err)
+	}
+	return nil
+}
+
+func joinURL(base, urlPath string) (string, error) {
+	u, err := url.Parse(base)
+	if err != nil {
+		return "", err
+	}
+	u.Path = path.Join(u.Path, urlPath)
+	return u.String(), nil
 }
