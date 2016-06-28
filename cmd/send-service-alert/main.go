@@ -1,18 +1,12 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
-	"time"
 
 	"github.com/pivotal-cf/service-alerts-client/client"
 
-	"github.com/craigfurman/herottp"
 	"gopkg.in/yaml.v2"
 )
 
@@ -30,22 +24,8 @@ func main() {
 	var config client.Config
 	must(yaml.Unmarshal(configBytes, &config))
 
-	notificationsServiceReqBody := client.SpaceNotificationRequest{
-		KindID:  client.DummyKindID,
-		Subject: fmt.Sprintf("[Service Alert][%s] %s", *product, *subject),
-		Text:    fmt.Sprintf("Alert from %s, service instance %s:\n\n%s", *product, *serviceInstanceID, *content),
-		ReplyTo: config.NotificationTarget.ReplyTo,
-	}
-	reqBytes, err := json.Marshal(notificationsServiceReqBody)
-	mustNot(err)
-	req, err := http.NewRequest("POST", fmt.Sprintf("%s/spaces/%s", config.NotificationTarget.URL, config.NotificationTarget.CFSpaceGUID), bytes.NewReader(reqBytes))
-	mustNot(err)
-	req.Header.Set("X-NOTIFICATIONS-VERSION", "1")
-	req.Header.Set("Authorization", "Bearer GET_ME_FROM_UAA")
-	req.Header.Set("Content-Type", "application/json")
-
-	httpClient := herottp.New(herottp.Config{Timeout: time.Second * 30})
-	httpClient.Do(req)
+	alertsClient := client.New(config)
+	must(alertsClient.SendServiceAlert(*product, *subject, *serviceInstanceID, *content))
 }
 
 func mustNot(err error) {
