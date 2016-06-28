@@ -2,56 +2,71 @@ package integration_test
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"os"
 	"os/exec"
 	"time"
+
+	"github.com/pivotal-cf/service-alerts-client/client"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
 	"github.com/onsi/gomega/ghttp"
+	"gopkg.in/yaml.v2"
 )
 
-// send-service-alert
-// -config config.yml
-// -product "MySQL"
-// -service-instance "instance" #optional
-// -subject "Alert for MySQL service"
-// -content "Failed backup"`
-//
-// config.yml
-//
-// notification_target:
-// url: https://notifcations.cf.com
-// cf_space_guid: some-guid
-// authentication:
-//   uaa:
-//     url: https://10.10.10.10:5493
-//     client_id: least-privileged-client
-//     client_secret: password
 var _ = Describe("send-service-alert executable", func() {
 	var (
 		notificationServer *ghttp.Server
 		runningBin         *gexec.Session
-
-		spaceGuid         = "some-space"
-		product           = "some-product"
-		subject           = "some-subject"
-		serviceInstanceID = "some-service-instance"
-		replyTo           = "foo@bar.com"
-		content           = "some content"
+		configFilePath     string
+		spaceGuid          = "some-space"
+		product            = "some-product"
+		subject            = "some-subject"
+		serviceInstanceID  = "some-service-instance"
+		replyTo            = "foo@bar.com"
+		content            = "some content"
+		uaaClientID        = "some-client-id"
+		uaaClientSecret    = "some-client-secret"
 	)
 
 	BeforeEach(func() {
-		text := fmt.Sprintf("Alert from %s, service instance %s:\n\n%s", product, serviceInstanceID, content)
+		notificationServer = ghttp.NewServer()
+
+		configFile, err := ioutil.TempFile("", "service-alerts-integration-tests")
+		Expect(err).NotTo(HaveOccurred())
+		defer configFile.Close()
+		configFilePath = configFile.Name()
+		config := client.Config{
+			NotificationTarget: client.NotificationTarget{
+				URL:         notificationServer.HTTPTestServer.URL,
+				CFSpaceGUID: spaceGuid,
+				ReplyTo:     replyTo,
+				Authentication: client.Authentication{
+					UAA: client.UAA{
+						URL:          "DOES_NOT_MATTER_UNTIL_WE_GET_REAL_TOKENS",
+						ClientID:     uaaClientID,
+						ClientSecret: uaaClientSecret,
+					},
+				},
+			},
+		}
+		configBytes, err := yaml.Marshal(config)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = configFile.Write(configBytes)
+		Expect(err).NotTo(HaveOccurred())
+
+		// newlines must be encoded in json string literal
+		text := fmt.Sprintf("Alert from %s, service instance %s:\\n\\n%s", product, serviceInstanceID, content)
 		sendNotificationReqBody := fmt.Sprintf(`{
 			"kind_id": "UPSERT_ME_TO_NOTIFICATION_SERVICE",
 			"subject": "[Service Alert][%s] %s",
 			"text": "%s",
-			"reply_to": "%s",
+			"reply_to": "%s"
 			}`, product, subject, text, replyTo)
 
-		notificationServer = ghttp.NewServer()
 		notificationServer.AppendHandlers(
 			ghttp.CombineHandlers(
 				ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGuid)),
@@ -66,10 +81,18 @@ var _ = Describe("send-service-alert executable", func() {
 
 	AfterEach(func() {
 		notificationServer.Close()
+		Expect(os.Remove(configFilePath)).To(Succeed())
 	})
 
 	JustBeforeEach(func() {
-		cmd := exec.Command(sendServiceAlertsBin)
+		cmd := exec.Command(
+			sendServiceAlertsBin,
+			"-config", configFilePath,
+			"-product", product,
+			"-service-instance", serviceInstanceID,
+			"-subject", subject,
+			"-content", content,
+		)
 		var err error
 		runningBin, err = gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
 		Expect(err).NotTo(HaveOccurred())
@@ -80,11 +103,6 @@ var _ = Describe("send-service-alert executable", func() {
 		Expect(runningBin.ExitCode()).To(Equal(0))
 	})
 
-	// curl -i -X POST \
-	//   -H "X-NOTIFICATIONS-VERSION: 1" \
-	//   -H "Authorization: Bearer $TOKEN" \
-	//   -d '{"kind_id":"$KIND", "subject":"$PARAMETER", "text":"$PARAMETER", "reply_to": "$FROM_CONFIG"}' \
-	//   http://notifications.example.com/spaces/space-guid
 	It("calls the notification service", func() {
 		Expect(notificationServer.ReceivedRequests()).To(HaveLen(1))
 	})
