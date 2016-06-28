@@ -61,11 +61,11 @@ var _ = Describe("send-service-alert executable", func() {
 		// newlines must be encoded in json string literal
 		text := fmt.Sprintf("Alert from %s, service instance %s:\\n\\n%s", product, serviceInstanceID, content)
 		sendNotificationReqBody := fmt.Sprintf(`{
-			"kind_id": "UPSERT_ME_TO_NOTIFICATION_SERVICE",
+			"kind_id": "%s",
 			"subject": "[Service Alert][%s] %s",
 			"text": "%s",
 			"reply_to": "%s"
-			}`, product, subject, text, replyTo)
+			}`, client.DummyKindID, product, subject, text, replyTo)
 
 		notificationServer.AppendHandlers(
 			ghttp.CombineHandlers(

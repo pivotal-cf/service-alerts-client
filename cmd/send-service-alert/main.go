@@ -31,7 +31,7 @@ func main() {
 	must(yaml.Unmarshal(configBytes, &config))
 
 	notificationsServiceReqBody := client.SpaceNotificationRequest{
-		KindID:  "UPSERT_ME_TO_NOTIFICATION_SERVICE",
+		KindID:  client.DummyKindID,
 		Subject: fmt.Sprintf("[Service Alert][%s] %s", *product, *subject),
 		Text:    fmt.Sprintf("Alert from %s, service instance %s:\n\n%s", *product, *serviceInstanceID, *content),
 		ReplyTo: config.NotificationTarget.ReplyTo,

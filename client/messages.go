@@ -1,5 +1,7 @@
 package client
 
+const DummyKindID = "service-alerts"
+
 type SpaceNotificationRequest struct {
 	KindID  string `json:"kind_id"`
 	Subject string `json:"subject"`
