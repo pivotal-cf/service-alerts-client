@@ -29,7 +29,10 @@ func (c *ServiceAlertsClient) SendServiceAlert(product, subject, serviceInstance
 	if err != nil {
 		return err
 	}
-	notificationRequest := c.createNotification(product, subject, serviceInstanceID, content)
+	notificationRequest, err := c.createNotification(product, subject, serviceInstanceID, content)
+	if err != nil {
+		return err
+	}
 	return c.sendNotification(token, notificationRequest)
 }
 
@@ -61,19 +64,18 @@ func (c *ServiceAlertsClient) sendNotification(uaaToken string, notificationRequ
 	return nil
 }
 
-func (c *ServiceAlertsClient) createNotification(product, subject, serviceInstanceID, content string) SpaceNotificationRequest {
-	emailBody := fmt.Sprintf("Alert from %s", product)
-	if serviceInstanceID != "" {
-		emailBody = fmt.Sprintf("%s, service instance %s", emailBody, serviceInstanceID)
+func (c *ServiceAlertsClient) createNotification(product, subject, serviceInstanceID, content string) (SpaceNotificationRequest, error) {
+	textBody, err := templateEmailBody(product, serviceInstanceID, content, time.Now())
+	if err != nil {
+		return SpaceNotificationRequest{}, err
 	}
-	emailBody = fmt.Sprintf("%s:\n\n%s", emailBody, content)
 
 	return SpaceNotificationRequest{
 		KindID:  DummyKindID,
 		Subject: fmt.Sprintf("[Service Alert][%s] %s", product, subject),
-		Text:    emailBody,
+		Text:    textBody,
 		ReplyTo: c.config.NotificationTarget.ReplyTo,
-	}
+	}, nil
 }
 
 func (c *ServiceAlertsClient) obtainUAAToken() (string, error) {

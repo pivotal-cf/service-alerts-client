@@ -1,6 +1,7 @@
 package integration_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -99,6 +100,17 @@ var _ = Describe("send-service-alert executable", func() {
 	})
 
 	Context("when UAA server returns a success resonse and a token", func() {
+		var requestMap map[string]string
+
+		caputureActualRequest := func(_ http.ResponseWriter, req *http.Request) {
+			var err error
+			actualRequest, err := ioutil.ReadAll(req.Body)
+			req.Body.Close()
+			Expect(err).ShouldNot(HaveOccurred())
+			requestMap = map[string]string{}
+			Expect(json.Unmarshal(actualRequest, &requestMap)).To(Succeed())
+		}
+
 		BeforeEach(func() {
 			uaaServer.AppendHandlers(ghttp.CombineHandlers(
 				ghttp.VerifyRequest("POST", "/oauth/token", ""),
@@ -115,16 +127,8 @@ var _ = Describe("send-service-alert executable", func() {
 		})
 
 		Context("when the notification service returns a success response", func() {
-			BeforeEach(func() {
-				// newlines must be encoded in json string literal
-				text := fmt.Sprintf(`Alert from %s, service instance %s:\n\n%s`, product, serviceInstanceID, content)
-				sendNotificationReqBody := fmt.Sprintf(`{
-					"kind_id": "%s",
-					"subject": "[Service Alert][%s] %s",
-					"text": "%s",
-					"reply_to": "%s"
-					}`, client.DummyKindID, product, subject, text, replyTo)
 
+			BeforeEach(func() {
 				notificationServer.AppendHandlers(
 					ghttp.CombineHandlers(
 						ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGuid)),
@@ -132,7 +136,7 @@ var _ = Describe("send-service-alert executable", func() {
 							"X-NOTIFICATIONS-VERSION": {"1"},
 							"Authorization":           {fmt.Sprintf("Bearer %s", token)},
 						}),
-						ghttp.VerifyJSON(sendNotificationReqBody),
+						caputureActualRequest,
 					),
 				)
 			})
@@ -147,6 +151,13 @@ var _ = Describe("send-service-alert executable", func() {
 
 			It("calls the notification service", func() {
 				Expect(notificationServer.ReceivedRequests()).To(HaveLen(1))
+
+				Expect(requestMap).To(HaveKeyWithValue("kind_id", client.DummyKindID))
+				Expect(requestMap).To(HaveKeyWithValue("subject", "[Service Alert]["+product+"] "+subject))
+				Expect(requestMap).To(HaveKeyWithValue("text", ContainSubstring(fmt.Sprintf("Alert from %s, service instance %s:", product, serviceInstanceID))))
+				Expect(requestMap).To(HaveKeyWithValue("text", ContainSubstring(content)))
+				Expect(requestMap).To(HaveKeyWithValue("text", ContainSubstring("[Alert generated at ")))
+				Expect(requestMap).To(HaveKeyWithValue("reply_to", replyTo))
 			})
 		})
 
@@ -154,14 +165,6 @@ var _ = Describe("send-service-alert executable", func() {
 			BeforeEach(func() {
 				replyTo = ""
 
-				// newlines must be encoded in json string literal
-				text := fmt.Sprintf(`Alert from %s, service instance %s:\n\n%s`, product, serviceInstanceID, content)
-				sendNotificationReqBody := fmt.Sprintf(`{
-					"kind_id": "%s",
-					"subject": "[Service Alert][%s] %s",
-					"text": "%s"
-					}`, client.DummyKindID, product, subject, text)
-
 				notificationServer.AppendHandlers(
 					ghttp.CombineHandlers(
 						ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGuid)),
@@ -169,7 +172,7 @@ var _ = Describe("send-service-alert executable", func() {
 							"X-NOTIFICATIONS-VERSION": {"1"},
 							"Authorization":           {fmt.Sprintf("Bearer %s", token)},
 						}),
-						ghttp.VerifyJSON(sendNotificationReqBody),
+						caputureActualRequest,
 					),
 				)
 			})
@@ -180,21 +183,20 @@ var _ = Describe("send-service-alert executable", func() {
 
 			It("calls the notification service", func() {
 				Expect(notificationServer.ReceivedRequests()).To(HaveLen(1))
+
+				Expect(requestMap).To(HaveKeyWithValue("kind_id", client.DummyKindID))
+				Expect(requestMap).To(HaveKeyWithValue("subject", "[Service Alert]["+product+"] "+subject))
+				Expect(requestMap).To(HaveKeyWithValue("text", ContainSubstring(fmt.Sprintf("Alert from %s, service instance %s:", product, serviceInstanceID))))
+				Expect(requestMap).To(HaveKeyWithValue("text", ContainSubstring(content)))
+				Expect(requestMap).To(HaveKeyWithValue("text", ContainSubstring("[Alert generated at ")))
+				Expect(requestMap).NotTo(HaveKey("reply_to"))
 			})
 		})
+
 		Context("when service instance id is not configured", func() {
 			BeforeEach(func() {
 				serviceInstanceID = ""
 
-				// newlines must be encoded in json string literal
-				text := fmt.Sprintf(`Alert from %s:\n\n%s`, product, content)
-				sendNotificationReqBody := fmt.Sprintf(`{
-					"kind_id": "%s",
-					"subject": "[Service Alert][%s] %s",
-					"text": "%s",
-					"reply_to": "%s"
-					}`, client.DummyKindID, product, subject, text, replyTo)
-
 				notificationServer.AppendHandlers(
 					ghttp.CombineHandlers(
 						ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGuid)),
@@ -202,7 +204,7 @@ var _ = Describe("send-service-alert executable", func() {
 							"X-NOTIFICATIONS-VERSION": {"1"},
 							"Authorization":           {fmt.Sprintf("Bearer %s", token)},
 						}),
-						ghttp.VerifyJSON(sendNotificationReqBody),
+						caputureActualRequest,
 					),
 				)
 			})
@@ -213,6 +215,13 @@ var _ = Describe("send-service-alert executable", func() {
 
 			It("calls the notification service", func() {
 				Expect(notificationServer.ReceivedRequests()).To(HaveLen(1))
+
+				Expect(requestMap).To(HaveKeyWithValue("kind_id", client.DummyKindID))
+				Expect(requestMap).To(HaveKeyWithValue("subject", "[Service Alert]["+product+"] "+subject))
+				Expect(requestMap).To(HaveKeyWithValue("text", ContainSubstring(fmt.Sprintf("Alert from %s:", product))))
+				Expect(requestMap).To(HaveKeyWithValue("text", ContainSubstring(content)))
+				Expect(requestMap).To(HaveKeyWithValue("text", ContainSubstring("[Alert generated at ")))
+				Expect(requestMap).To(HaveKeyWithValue("reply_to", replyTo))
 			})
 		})
 
