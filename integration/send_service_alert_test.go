@@ -27,7 +27,7 @@ var _ = Describe("send-service-alert executable", func() {
 		product            = "some-product"
 		subject            = "some-subject"
 		serviceInstanceID  = "some-service-instance"
-		replyTo            = "foo@bar.com"
+		replyTo            string
 		content            = "some content"
 		uaaClientID        = "some-client-id"
 		uaaClientSecret    = "some-client-secret"
@@ -37,29 +37,7 @@ var _ = Describe("send-service-alert executable", func() {
 	BeforeEach(func() {
 		notificationServer = ghttp.NewServer()
 		uaaServer = ghttp.NewServer()
-
-		configFile, err := ioutil.TempFile("", "service-alerts-integration-tests")
-		Expect(err).NotTo(HaveOccurred())
-		defer configFile.Close()
-		configFilePath = configFile.Name()
-		config := client.Config{
-			NotificationTarget: client.NotificationTarget{
-				URL:         notificationServer.HTTPTestServer.URL,
-				CFSpaceGUID: spaceGuid,
-				ReplyTo:     replyTo,
-				Authentication: client.Authentication{
-					UAA: client.UAA{
-						URL:          uaaServer.HTTPTestServer.URL,
-						ClientID:     uaaClientID,
-						ClientSecret: uaaClientSecret,
-					},
-				},
-			},
-		}
-		configBytes, err := yaml.Marshal(config)
-		Expect(err).NotTo(HaveOccurred())
-		_, err = configFile.Write(configBytes)
-		Expect(err).NotTo(HaveOccurred())
+		replyTo = "foo@bar.com"
 	})
 
 	AfterEach(func() {
@@ -73,6 +51,39 @@ var _ = Describe("send-service-alert executable", func() {
 	})
 
 	JustBeforeEach(func() {
+		notificationServerURL := ""
+		if notificationServer.HTTPTestServer != nil {
+			notificationServerURL = notificationServer.URL()
+		}
+
+		uaaURL := ""
+		if uaaServer.HTTPTestServer != nil {
+			uaaURL = uaaServer.URL()
+		}
+
+		configFile, err := ioutil.TempFile("", "service-alerts-integration-tests")
+		Expect(err).NotTo(HaveOccurred())
+		defer configFile.Close()
+		configFilePath = configFile.Name()
+		config := client.Config{
+			NotificationTarget: client.NotificationTarget{
+				URL:         notificationServerURL,
+				CFSpaceGUID: spaceGuid,
+				ReplyTo:     replyTo,
+				Authentication: client.Authentication{
+					UAA: client.UAA{
+						URL:          uaaURL,
+						ClientID:     uaaClientID,
+						ClientSecret: uaaClientSecret,
+					},
+				},
+			},
+		}
+		configBytes, err := yaml.Marshal(config)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = configFile.Write(configBytes)
+		Expect(err).NotTo(HaveOccurred())
+
 		cmd := exec.Command(
 			sendServiceAlertsBin,
 			"-config", configFilePath,
@@ -81,7 +92,6 @@ var _ = Describe("send-service-alert executable", func() {
 			"-subject", subject,
 			"-content", content,
 		)
-		var err error
 		runningBin, err = gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
 		Expect(err).NotTo(HaveOccurred())
 		runningBin = runningBin.Wait(time.Second * 3)
@@ -132,6 +142,39 @@ var _ = Describe("send-service-alert executable", func() {
 
 			It("obtains a token from UAA", func() {
 				Expect(uaaServer.ReceivedRequests()).To(HaveLen(1))
+			})
+
+			It("calls the notification service", func() {
+				Expect(notificationServer.ReceivedRequests()).To(HaveLen(1))
+			})
+		})
+
+		Context("when reply-to is not configured", func() {
+			BeforeEach(func() {
+				replyTo = ""
+
+				// newlines must be encoded in json string literal
+				text := fmt.Sprintf(`Alert from %s, service instance %s:\n\n%s`, product, serviceInstanceID, content)
+				sendNotificationReqBody := fmt.Sprintf(`{
+					"kind_id": "%s",
+					"subject": "[Service Alert][%s] %s",
+					"text": "%s"
+					}`, client.DummyKindID, product, subject, text)
+
+				notificationServer.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGuid)),
+						ghttp.VerifyHeader(http.Header{
+							"X-NOTIFICATIONS-VERSION": {"1"},
+							"Authorization":           {fmt.Sprintf("Bearer %s", token)},
+						}),
+						ghttp.VerifyJSON(sendNotificationReqBody),
+					),
+				)
+			})
+
+			It("exits with 0", func() {
+				Expect(runningBin.ExitCode()).To(Equal(0))
 			})
 
 			It("calls the notification service", func() {
