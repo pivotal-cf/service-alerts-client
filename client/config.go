@@ -5,10 +5,11 @@ type Config struct {
 }
 
 type NotificationTarget struct {
-	URL            string         `yaml:"url"`
-	CFSpaceGUID    string         `yaml:"cf_space_guid"`
-	ReplyTo        string         `yaml:"reply_to"`
-	Authentication Authentication `yaml:"authentication"`
+	URL               string         `yaml:"url"`
+	SkipSSLValidation *bool          `yaml:"skip_ssl_validation"`
+	CFSpaceGUID       string         `yaml:"cf_space_guid"`
+	ReplyTo           string         `yaml:"reply_to"`
+	Authentication    Authentication `yaml:"authentication"`
 }
 
 type Authentication struct {

@@ -20,7 +20,12 @@ type ServiceAlertsClient struct {
 }
 
 func New(config Config) *ServiceAlertsClient {
-	httpClient := herottp.New(herottp.Config{Timeout: time.Second * 30})
+	skipSSLValidation := false
+	if config.NotificationTarget.SkipSSLValidation != nil {
+		skipSSLValidation = *config.NotificationTarget.SkipSSLValidation
+	}
+
+	httpClient := herottp.New(herottp.Config{Timeout: time.Second * 30, DisableTLSCertificateVerification: skipSSLValidation})
 	return &ServiceAlertsClient{config: config, httpClient: httpClient}
 }
 
