@@ -127,7 +127,6 @@ var _ = Describe("send-service-alert executable", func() {
 		})
 
 		Context("when the notification service returns a success response", func() {
-
 			BeforeEach(func() {
 				notificationServer.AppendHandlers(
 					ghttp.CombineHandlers(
