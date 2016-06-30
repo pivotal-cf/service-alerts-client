@@ -12,6 +12,7 @@ import (
 
 	"github.com/pivotal-cf/service-alerts-client/client"
 
+	"github.com/cloudfoundry-incubator/cf-test-helpers/cf"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gexec"
@@ -41,12 +42,31 @@ type Headers struct {
 var _ = Describe("sending a service alert to a real CF notifications service instance", func() {
 	var (
 		configFilePath string
-		replyTo        = "some-reply-to-email@example.com"
 		mailhogURL     string
+		cfOrg          string
+		replyTo        = "some-reply-to-email@example.com"
+		userEmail      = "some-user-of-cloud-foundry@example.com"
+		cfTimeout      = time.Second * 10
 	)
 
 	BeforeEach(func() {
 		mailhogURL = envMustHave("MAILHOG_URL")
+
+		cfAPI := envMustHave("CF_API")
+		cfUsername := envMustHave("CF_USERNAME")
+		cfPassword := envMustHave("CF_PASSWORD")
+		cfOrg = "test-" + uuid.New()
+		cfSpace := "test-" + uuid.New()
+		Eventually(cf.Cf("api", cfAPI, "--skip-ssl-validation"), cfTimeout).Should(gexec.Exit(0))
+		Eventually(cf.CfAuth(cfUsername, cfPassword), cfTimeout).Should(gexec.Exit(0))
+		Eventually(cf.Cf("create-org", cfOrg), cfTimeout).Should(gexec.Exit(0))
+		Eventually(cf.Cf("target", "-o", cfOrg), cfTimeout).Should(gexec.Exit(0))
+		Eventually(cf.Cf("create-space", cfSpace), cfTimeout).Should(gexec.Exit(0))
+		Eventually(cf.Cf("create-user", userEmail, "some-password-that-does-not-get-used"), cfTimeout).Should(gexec.Exit(0))
+		Eventually(cf.Cf("set-space-role", userEmail, cfOrg, cfSpace, "SpaceDeveloper"), cfTimeout).Should(gexec.Exit(0))
+		getSpaceGuidCmd := cf.Cf("space", cfSpace, "--guid")
+		Eventually(getSpaceGuidCmd, cfTimeout).Should(gexec.Exit(0))
+		cfSpaceGUID := strings.TrimSpace(string(getSpaceGuidCmd.Buffer().Contents()))
 
 		configFile, err := ioutil.TempFile("", "service-alerts-integration-tests")
 		Expect(err).NotTo(HaveOccurred())
@@ -56,7 +76,7 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 			NotificationTarget: client.NotificationTarget{
 				URL:               envMustHave("NOTIFICATIONS_SERVICE_URL"),
 				SkipSSLValidation: pointerTo(true),
-				CFSpaceGUID:       envMustHave("CF_SPACE_GUID"),
+				CFSpaceGUID:       cfSpaceGUID,
 				ReplyTo:           replyTo,
 				Authentication: client.Authentication{
 					UAA: client.UAA{
@@ -80,6 +100,8 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 		Expect(err).NotTo(HaveOccurred())
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
+		Eventually(cf.Cf("delete-org", cfOrg, "-f"), cfTimeout).Should(gexec.Exit(0))
+		Eventually(cf.Cf("delete-user", userEmail, "-f"), cfTimeout).Should(gexec.Exit(0))
 		Expect(os.Remove(configFilePath)).To(Succeed())
 	})
 
@@ -120,7 +142,7 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 		}, time.Second*10).Should(BeTrue())
 
 		Expect(emailContent.Headers.ReplyTo).To(ConsistOf(replyTo))
-		Expect(emailContent.Headers.To).To(ConsistOf("cfurman@pivotal.io"))
+		Expect(emailContent.Headers.To).To(ConsistOf(userEmail))
 		Expect(emailContent.Headers.Subject).To(ConsistOf(fmt.Sprintf("CF Notification: [Service Alert][%s] %s", product, subject)))
 		Expect(emailContent.Body).To(ContainSubstring(fmt.Sprintf("Alert from %s", product)))
 		Expect(emailContent.Body).To(ContainSubstring(fmt.Sprintf("service instance %s", serviceInstanceID)))

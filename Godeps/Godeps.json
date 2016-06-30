@@ -7,6 +7,14 @@
 	],
 	"Deps": [
 		{
+			"ImportPath": "github.com/cloudfoundry-incubator/cf-test-helpers/cf",
+			"Rev": "4dd9d48177008d37e3a5e581cf65c8585453e45c"
+		},
+		{
+			"ImportPath": "github.com/cloudfoundry-incubator/cf-test-helpers/runner",
+			"Rev": "4dd9d48177008d37e3a5e581cf65c8585453e45c"
+		},
+		{
 			"ImportPath": "github.com/craigfurman/herottp",
 			"Rev": "5c89a599c8659573e7be01fa87f2a8150fd649b7"
 		},
