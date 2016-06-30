@@ -1,0 +1,22 @@
+---
+platform: linux
+
+image_resource:
+  type: docker-image
+  source: {repository: pcfservicesenablement/services-enablement-ci}
+
+inputs:
+  - name: service-alerts-client
+    path: src/github.com/pivotal-cf/service-alerts-client
+
+run:
+  path: bash
+  args: ["-c", "GOPATH=$(pwd) src/github.com/pivotal-cf/service-alerts-client/scripts/real-service-tests.sh"]
+
+params:
+  NOTIFICATIONS_SERVICE_URL: https://notifications.services-enablement-bosh-lite.cf-app.com
+  CF_SPACE_GUID: f84c7325-d77b-45d0-8f3c-6e8e223212f1
+  UAA_URL: https://uaa.services-enablement-bosh-lite.cf-app.com
+  NOTIFICATIONS_CLIENT_ID: notifications-admin
+  NOTIFICATIONS_CLIENT_SECRET: itsasecret # already in manifests
+  MAILHOG_URL: http://52.208.56.149
