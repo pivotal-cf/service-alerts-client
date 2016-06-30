@@ -165,6 +165,11 @@
 			"Rev": "0df7b7fdb38123c12a1f569f0affb2c2a7bd72cf"
 		},
 		{
+			"ImportPath": "github.com/pborman/uuid",
+			"Comment": "v1.0-11-gc55201b",
+			"Rev": "c55201b036063326c5b1b89ccfe45a184973d073"
+		},
+		{
 			"ImportPath": "gopkg.in/yaml.v2",
 			"Rev": "a83829b6f1293c91addabc89d0571c246397bbf4"
 		}
