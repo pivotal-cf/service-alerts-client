@@ -41,42 +41,50 @@ type Headers struct {
 
 var _ = Describe("sending a service alert to a real CF notifications service instance", func() {
 	var (
-		configFilePath string
-		mailhogURL     string
-		cfOrg          string
-		replyTo        = "some-reply-to-email@example.com"
-		userEmail      = "some-user-of-cloud-foundry@example.com"
-		cfTimeout      = time.Second * 10
+		configFilePath  string
+		mailhogURL      string
+		cfOrg           string
+		replyTo         = "some-reply-to-email@example.com"
+		devUserEmail    = "space-developer@example.com"
+		devUserPassword = "some-password-that-we-use"
+		auditorUsername = "space-auditor@example.com"
+		auditorPassword = "some-password-that-we-use"
+		cfTimeout       = time.Second * 10
 	)
 
 	BeforeEach(func() {
 		mailhogURL = envMustHave("MAILHOG_URL")
 
 		cfAPI := envMustHave("CF_API")
-		cfUsername := envMustHave("CF_USERNAME")
-		cfPassword := envMustHave("CF_PASSWORD")
+		cfAdminUsername := envMustHave("CF_ADMIN_USERNAME")
+		cfAdminPassword := envMustHave("CF_ADMIN_PASSWORD")
 		cfOrg = "test-" + uuid.New()
 		cfSpace := "test-" + uuid.New()
 		Eventually(cf.Cf("api", cfAPI, "--skip-ssl-validation"), cfTimeout).Should(gexec.Exit(0))
-		Eventually(cf.CfAuth(cfUsername, cfPassword), cfTimeout).Should(gexec.Exit(0))
+		Eventually(cf.CfAuth(cfAdminUsername, cfAdminPassword), cfTimeout).Should(gexec.Exit(0))
 		Eventually(cf.Cf("create-org", cfOrg), cfTimeout).Should(gexec.Exit(0))
 		Eventually(cf.Cf("target", "-o", cfOrg), cfTimeout).Should(gexec.Exit(0))
 		Eventually(cf.Cf("create-space", cfSpace), cfTimeout).Should(gexec.Exit(0))
-		Eventually(cf.Cf("create-user", userEmail, "some-password-that-does-not-get-used"), cfTimeout).Should(gexec.Exit(0))
-		Eventually(cf.Cf("set-space-role", userEmail, cfOrg, cfSpace, "SpaceDeveloper"), cfTimeout).Should(gexec.Exit(0))
-		getSpaceGuidCmd := cf.Cf("space", cfSpace, "--guid")
-		Eventually(getSpaceGuidCmd, cfTimeout).Should(gexec.Exit(0))
-		cfSpaceGUID := strings.TrimSpace(string(getSpaceGuidCmd.Buffer().Contents()))
+		Eventually(cf.Cf("create-user", devUserEmail, devUserPassword), cfTimeout).Should(gexec.Exit(0))
+		Eventually(cf.Cf("set-space-role", devUserEmail, cfOrg, cfSpace, "SpaceDeveloper"), cfTimeout).Should(gexec.Exit(0))
+		Eventually(cf.Cf("create-user", auditorUsername, auditorPassword), cfTimeout).Should(gexec.Exit(0))
+		Eventually(cf.Cf("set-space-role", auditorUsername, cfOrg, cfSpace, "SpaceAuditor"), cfTimeout).Should(gexec.Exit(0))
 
 		configFile, err := ioutil.TempFile("", "service-alerts-integration-tests")
 		Expect(err).NotTo(HaveOccurred())
 		defer configFile.Close()
 		configFilePath = configFile.Name()
 		config := client.Config{
+			CloudController: client.CloudController{
+				URL:      cfAPI,
+				User:     auditorUsername,
+				Password: auditorPassword,
+			},
 			NotificationTarget: client.NotificationTarget{
 				URL:               envMustHave("NOTIFICATIONS_SERVICE_URL"),
 				SkipSSLValidation: pointerTo(true),
-				CFSpaceGUID:       cfSpaceGUID,
+				CFOrg:             cfOrg,
+				CFSpace:           cfSpace,
 				ReplyTo:           replyTo,
 				Authentication: client.Authentication{
 					UAA: client.UAA{
@@ -101,7 +109,8 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))
 
 		Eventually(cf.Cf("delete-org", cfOrg, "-f"), cfTimeout).Should(gexec.Exit(0))
-		Eventually(cf.Cf("delete-user", userEmail, "-f"), cfTimeout).Should(gexec.Exit(0))
+		Eventually(cf.Cf("delete-user", devUserEmail, "-f"), cfTimeout).Should(gexec.Exit(0))
+		Eventually(cf.Cf("delete-user", auditorUsername, "-f"), cfTimeout).Should(gexec.Exit(0))
 		Expect(os.Remove(configFilePath)).To(Succeed())
 	})
 
@@ -142,7 +151,7 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 		}, time.Second*10).Should(BeTrue())
 
 		Expect(emailContent.Headers.ReplyTo).To(ConsistOf(replyTo))
-		Expect(emailContent.Headers.To).To(ConsistOf(userEmail))
+		Expect(emailContent.Headers.To).To(ConsistOf(devUserEmail))
 		Expect(emailContent.Headers.Subject).To(ConsistOf(fmt.Sprintf("CF Notification: [Service Alert][%s] %s", product, subject)))
 		Expect(emailContent.Body).To(ContainSubstring(fmt.Sprintf("Alert from %s", product)))
 		Expect(emailContent.Body).To(ContainSubstring(fmt.Sprintf("service instance %s", serviceInstanceID)))

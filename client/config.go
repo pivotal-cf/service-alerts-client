@@ -1,13 +1,21 @@
 package client
 
 type Config struct {
+	CloudController    CloudController    `yaml:"cloud_controller"`
 	NotificationTarget NotificationTarget `yaml:"notification_target"`
+}
+
+type CloudController struct {
+	URL      string `yaml:"url"`
+	User     string `yaml:"user"`
+	Password string `yaml:"password"`
 }
 
 type NotificationTarget struct {
 	URL               string         `yaml:"url"`
 	SkipSSLValidation *bool          `yaml:"skip_ssl_validation"`
-	CFSpaceGUID       string         `yaml:"cf_space_guid"`
+	CFOrg             string         `yaml:"cf_org"`
+	CFSpace           string         `yaml:"cf_space"`
 	ReplyTo           string         `yaml:"reply_to"`
 	Authentication    Authentication `yaml:"authentication"`
 }
