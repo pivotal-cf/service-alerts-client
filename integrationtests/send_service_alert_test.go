@@ -85,15 +85,9 @@ var _ = Describe("send-service-alert executable", func() {
 	})
 
 	AfterEach(func() {
-		if notificationServer.HTTPTestServer != nil {
-			notificationServer.Close()
-		}
-		if uaaServer.HTTPTestServer != nil {
-			uaaServer.Close()
-		}
-		if cfServer.HTTPTestServer != nil {
-			cfServer.Close()
-		}
+		notificationServer.Close()
+		uaaServer.Close()
+		cfServer.Close()
 		Expect(os.Remove(configFilePath)).To(Succeed())
 	})
 
