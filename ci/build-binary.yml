@@ -6,11 +6,11 @@ image_resource:
   source: {repository: pcfservicesenablement/services-enablement-ci}
 
 inputs:
-  - name: service-alerts-client-final-tag
+  - name: repo-tag
     path: src/github.com/pivotal-cf/service-alerts-client
 
 outputs:
-  - name: build-service-alerts-client-binary
+  - name: build-binary
     path: bin
 
 run:
