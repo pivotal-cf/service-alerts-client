@@ -2,8 +2,10 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 
 	"github.com/pivotal-cf/service-alerts-client/client"
 
@@ -30,7 +32,14 @@ func main() {
 
 func mustNot(err error) {
 	if err != nil {
-		log.Fatalln(err)
+		switch err.(type) {
+		case client.HTTPRequestError:
+			log.Println(err)
+			fmt.Fprintf(os.Stdout, err.(client.HTTPRequestError).ErrorMessageForUser())
+			os.Exit(2)
+		default:
+			log.Fatalln(err)
+		}
 	}
 }
 

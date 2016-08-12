@@ -46,14 +46,39 @@ var _ = Describe("send-service-alert executable", func() {
 		cfToken                         = "cf-token"
 		notificationsToken              = "notifications-token"
 		requestMap                      map[string]string
+		notificationServerURL           string
+		uaaURL                          string
+		cfApiURL                        string
+		cmdWaitDuration                 time.Duration
+		httpRetryLimitSeconds           int
 	)
 
 	BeforeEach(func() {
 		notificationServer = ghttp.NewServer()
 		uaaServer = ghttp.NewServer()
 		cfServer = ghttp.NewServer()
+
+		notificationServerURL = "notification server not running"
+		if notificationServer.HTTPTestServer != nil {
+			notificationServerURL = notificationServer.URL()
+		}
+
+		uaaURL = "uaa server not running"
+		if uaaServer.HTTPTestServer != nil {
+			uaaURL = uaaServer.URL()
+		}
+
+		cfApiURL = "cf server not running"
+		if cfServer.HTTPTestServer != nil {
+			cfApiURL = cfServer.URL()
+		}
+
 		replyTo = "foo@bar.com"
 		serviceInstanceID = "some-service-instance"
+
+		// The minimum number of retries is 4, lasting just over 7 seconds
+		httpRetryLimitSeconds = 8
+		cmdWaitDuration = time.Second * 8
 
 		cfAuthRequestHandler = ghttp.CombineHandlers(
 			ghttp.VerifyRequest("POST", "/oauth/token", ""),
@@ -92,26 +117,12 @@ var _ = Describe("send-service-alert executable", func() {
 	})
 
 	JustBeforeEach(func() {
-		notificationServerURL := ""
-		if notificationServer.HTTPTestServer != nil {
-			notificationServerURL = notificationServer.URL()
-		}
-
-		uaaURL := ""
-		if uaaServer.HTTPTestServer != nil {
-			uaaURL = uaaServer.URL()
-		}
-
-		cfApiURL := ""
-		if cfServer.HTTPTestServer != nil {
-			cfApiURL = cfServer.URL()
-		}
-
 		configFile, err := ioutil.TempFile("", "service-alerts-integration-tests")
 		Expect(err).NotTo(HaveOccurred())
 		defer configFile.Close()
 		configFilePath = configFile.Name()
 		config := client.Config{
+			HTTPRetryTimeLimitSeconds: httpRetryLimitSeconds,
 			CloudController: client.CloudController{
 				URL:      cfApiURL,
 				User:     cfApiUsername,
@@ -148,7 +159,7 @@ var _ = Describe("send-service-alert executable", func() {
 		)
 		runningBin, err = gexec.Start(cmd, io.MultiWriter(GinkgoWriter, &stdout), io.MultiWriter(GinkgoWriter, &stderr))
 		Expect(err).NotTo(HaveOccurred())
-		runningBin = runningBin.Wait(time.Second * 3)
+		runningBin = runningBin.Wait(cmdWaitDuration)
 	})
 
 	captureActualRequest := func(_ http.ResponseWriter, req *http.Request) {
@@ -342,18 +353,29 @@ var _ = Describe("send-service-alert executable", func() {
 					)
 				})
 
-				It("exits with non-zero", func() {
-					Expect(runningBin.ExitCode()).NotTo(Equal(0))
+				It("exits with 1", func() {
+					Expect(runningBin.ExitCode()).To(Equal(1))
 				})
 			})
 
 			Context("notifications server can't be reached", func() {
 				BeforeEach(func() {
 					notificationServer.Close()
+					notificationServerURL = "http://somewhere-that-does-not-exist.io"
 				})
 
-				It("exits with non-zero", func() {
-					Expect(runningBin.ExitCode()).NotTo(Equal(0))
+				It("should retry the the request up to the time limit", func() {
+					By("retrying the request")
+					Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":1`))
+					Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":2`))
+					Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":3`))
+					Expect(stderr.String()).To(ContainSubstring(`"error":"giving up"`))
+
+					By("Logging a user error message to stdout")
+					Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
+
+					By("exiting with code 2")
+					Expect(runningBin.ExitCode()).To(Equal(2))
 				})
 			})
 		})
@@ -368,8 +390,8 @@ var _ = Describe("send-service-alert executable", func() {
 				))
 			})
 
-			It("exits with non-zero", func() {
-				Expect(runningBin.ExitCode()).NotTo(Equal(0))
+			It("exits with 1", func() {
+				Expect(runningBin.ExitCode()).To(Equal(1))
 			})
 
 			It("logs the error", func() {
@@ -385,8 +407,8 @@ var _ = Describe("send-service-alert executable", func() {
 				))
 			})
 
-			It("exits with non-zero", func() {
-				Expect(runningBin.ExitCode()).NotTo(Equal(0))
+			It("exits with 1", func() {
+				Expect(runningBin.ExitCode()).To(Equal(1))
 			})
 
 			It("logs the error", func() {
@@ -397,10 +419,21 @@ var _ = Describe("send-service-alert executable", func() {
 		Context("UAA server can't be reached", func() {
 			BeforeEach(func() {
 				uaaServer.Close()
+				uaaURL = "http://somewhere-that-does-not-exist.io"
 			})
 
-			It("exits with non-zero", func() {
-				Expect(runningBin.ExitCode()).NotTo(Equal(0))
+			It("should retry the the request up to the time limit", func() {
+				By("retrying the request")
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":1`))
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":2`))
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":3`))
+				Expect(stderr.String()).To(ContainSubstring(`"error":"giving up"`))
+
+				By("Logging a user error message to stdout")
+				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
+
+				By("exiting with code 2")
+				Expect(runningBin.ExitCode()).To(Equal(2))
 			})
 		})
 
@@ -413,8 +446,8 @@ var _ = Describe("send-service-alert executable", func() {
 					))
 				})
 
-				It("exits with non-zero", func() {
-					Expect(runningBin.ExitCode()).NotTo(Equal(0))
+				It("exits with 1", func() {
+					Expect(runningBin.ExitCode()).To(Equal(1))
 				})
 
 				It("logs the error", func() {
@@ -438,8 +471,8 @@ var _ = Describe("send-service-alert executable", func() {
 					)
 				})
 
-				It("exits with non-zero", func() {
-					Expect(runningBin.ExitCode()).NotTo(Equal(0))
+				It("exits with 1", func() {
+					Expect(runningBin.ExitCode()).To(Equal(1))
 				})
 
 				It("logs the error", func() {
@@ -454,13 +487,24 @@ var _ = Describe("send-service-alert executable", func() {
 			uaaServer.AppendHandlers(cfAuthRequestHandler)
 		})
 
-		Context("CF is unreachable", func() {
+		Context("CF API can't be reached", func() {
 			BeforeEach(func() {
 				cfServer.Close()
+				cfApiURL = "http://somewhere-that-does-not-exist.io"
 			})
 
-			It("exits with non-zero", func() {
-				Expect(runningBin.ExitCode()).NotTo(Equal(0))
+			It("should retry the the request up to the time limit", func() {
+				By("retrying the request")
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":1`))
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":2`))
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":3`))
+				Expect(stderr.String()).To(ContainSubstring(`"error":"giving up"`))
+
+				By("Logging a user error message to stdout")
+				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
+
+				By("exiting with code 2")
+				Expect(runningBin.ExitCode()).To(Equal(2))
 			})
 		})
 
@@ -469,8 +513,8 @@ var _ = Describe("send-service-alert executable", func() {
 				cfServer.AppendHandlers(orgQueryHandler("fixtures/cf_no_matches_response.json"))
 			})
 
-			It("exits with non-zero", func() {
-				Expect(runningBin.ExitCode()).NotTo(Equal(0))
+			It("exits with 1", func() {
+				Expect(runningBin.ExitCode()).To(Equal(1))
 			})
 
 			It("logs the error", func() {
@@ -483,8 +527,8 @@ var _ = Describe("send-service-alert executable", func() {
 				cfServer.AppendHandlers(orgQueryHandler("fixtures/cf_unparseable_response.json"))
 			})
 
-			It("exits with non-zero", func() {
-				Expect(runningBin.ExitCode()).NotTo(Equal(0))
+			It("exits with 1", func() {
+				Expect(runningBin.ExitCode()).To(Equal(1))
 			})
 
 			It("logs an error", func() {
@@ -500,8 +544,8 @@ var _ = Describe("send-service-alert executable", func() {
 				)
 			})
 
-			It("exits with non-zero", func() {
-				Expect(runningBin.ExitCode()).NotTo(Equal(0))
+			It("exits with 1", func() {
+				Expect(runningBin.ExitCode()).To(Equal(1))
 			})
 
 			It("logs the error", func() {
@@ -517,8 +561,8 @@ var _ = Describe("send-service-alert executable", func() {
 				)
 			})
 
-			It("exits with non-zero", func() {
-				Expect(runningBin.ExitCode()).NotTo(Equal(0))
+			It("exits with 1", func() {
+				Expect(runningBin.ExitCode()).To(Equal(1))
 			})
 
 			It("logs an error", func() {

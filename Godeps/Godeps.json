@@ -1,10 +1,19 @@
 {
 	"ImportPath": "github.com/pivotal-cf/service-alerts-client",
 	"GoVersion": "go1.6",
+	"GodepVersion": "v74",
 	"Packages": [
 		"./..."
 	],
 	"Deps": [
+		{
+			"ImportPath": "code.cloudfoundry.org/clock",
+			"Rev": "e0835a7d46f9ea781e764f0dc9325110e32a97dd"
+		},
+		{
+			"ImportPath": "code.cloudfoundry.org/lager",
+			"Rev": "62951a8009ab331bb21dc418074fa54e66eb9b6a"
+		},
 		{
 			"ImportPath": "github.com/cloudfoundry-incubator/cf-test-helpers/cf",
 			"Rev": "4dd9d48177008d37e3a5e581cf65c8585453e45c"
@@ -12,6 +21,10 @@
 		{
 			"ImportPath": "github.com/cloudfoundry-incubator/cf-test-helpers/runner",
 			"Rev": "4dd9d48177008d37e3a5e581cf65c8585453e45c"
+		},
+		{
+			"ImportPath": "github.com/concourse/retryhttp",
+			"Rev": "3248b7b306c926bc1fc2ac759dfb306ba7b52480"
 		},
 		{
 			"ImportPath": "github.com/craigfurman/herottp",
@@ -175,6 +188,10 @@
 			"ImportPath": "github.com/pborman/uuid",
 			"Comment": "v1.0-11-gc55201b",
 			"Rev": "c55201b036063326c5b1b89ccfe45a184973d073"
+		},
+		{
+			"ImportPath": "golang.org/x/sys/unix",
+			"Rev": "a646d33e2ee3172a661fc09bca23bb4889a41bc8"
 		},
 		{
 			"ImportPath": "gopkg.in/yaml.v2",
