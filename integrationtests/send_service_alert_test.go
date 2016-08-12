@@ -50,7 +50,6 @@ var _ = Describe("send-service-alert executable", func() {
 		uaaURL                          string
 		cfApiURL                        string
 		cmdWaitDuration                 time.Duration
-		httpRetryLimitSeconds           int
 	)
 
 	BeforeEach(func() {
@@ -76,9 +75,7 @@ var _ = Describe("send-service-alert executable", func() {
 		replyTo = "foo@bar.com"
 		serviceInstanceID = "some-service-instance"
 
-		// The minimum number of retries is 4, lasting just over 7 seconds
-		httpRetryLimitSeconds = 8
-		cmdWaitDuration = time.Second * 8
+		cmdWaitDuration = time.Second * 3
 
 		cfAuthRequestHandler = ghttp.CombineHandlers(
 			ghttp.VerifyRequest("POST", "/oauth/token", ""),
@@ -122,7 +119,6 @@ var _ = Describe("send-service-alert executable", func() {
 		defer configFile.Close()
 		configFilePath = configFile.Name()
 		config := client.Config{
-			HTTPRetryTimeLimitSeconds: httpRetryLimitSeconds,
 			CloudController: client.CloudController{
 				URL:      cfApiURL,
 				User:     cfApiUsername,
@@ -362,6 +358,7 @@ var _ = Describe("send-service-alert executable", func() {
 				BeforeEach(func() {
 					notificationServer.Close()
 					notificationServerURL = "http://somewhere-that-does-not-exist.io"
+					cmdWaitDuration = time.Second * 32
 				})
 
 				It("should retry the the request up to the time limit", func() {
@@ -369,10 +366,12 @@ var _ = Describe("send-service-alert executable", func() {
 					Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":1`))
 					Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":2`))
 					Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":3`))
+					Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":4`))
+					Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":5`))
 					Expect(stderr.String()).To(ContainSubstring(`"error":"giving up"`))
 
 					By("Logging a user error message to stdout")
-					Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
+					Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
 
 					By("exiting with code 2")
 					Expect(runningBin.ExitCode()).To(Equal(2))
@@ -420,6 +419,7 @@ var _ = Describe("send-service-alert executable", func() {
 			BeforeEach(func() {
 				uaaServer.Close()
 				uaaURL = "http://somewhere-that-does-not-exist.io"
+				cmdWaitDuration = time.Second * 32
 			})
 
 			It("should retry the the request up to the time limit", func() {
@@ -427,10 +427,12 @@ var _ = Describe("send-service-alert executable", func() {
 				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":1`))
 				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":2`))
 				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":3`))
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":4`))
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":5`))
 				Expect(stderr.String()).To(ContainSubstring(`"error":"giving up"`))
 
 				By("Logging a user error message to stdout")
-				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
+				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
 
 				By("exiting with code 2")
 				Expect(runningBin.ExitCode()).To(Equal(2))
@@ -491,6 +493,7 @@ var _ = Describe("send-service-alert executable", func() {
 			BeforeEach(func() {
 				cfServer.Close()
 				cfApiURL = "http://somewhere-that-does-not-exist.io"
+				cmdWaitDuration = time.Second * 32
 			})
 
 			It("should retry the the request up to the time limit", func() {
@@ -498,10 +501,12 @@ var _ = Describe("send-service-alert executable", func() {
 				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":1`))
 				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":2`))
 				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":3`))
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":4`))
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":5`))
 				Expect(stderr.String()).To(ContainSubstring(`"error":"giving up"`))
 
 				By("Logging a user error message to stdout")
-				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
+				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
 
 				By("exiting with code 2")
 				Expect(runningBin.ExitCode()).To(Equal(2))

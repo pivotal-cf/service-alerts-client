@@ -2,7 +2,6 @@ package client
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"code.cloudfoundry.org/clock"
@@ -17,43 +16,26 @@ type ServiceAlertsClient struct {
 	httpClient *herottp.Client
 }
 
-func New(config Config) *ServiceAlertsClient {
+const requestTimeout = time.Second * 60
+const totalDelayBetweenAttempts = time.Second * 48 // Configures the policy to make 6 attempts with 31 seconds of delay between them
+
+func New(config Config, logger lager.Logger) *ServiceAlertsClient {
 	skipSSLValidation := false
 	if config.NotificationTarget.SkipSSLValidation != nil {
 		skipSSLValidation = *config.NotificationTarget.SkipSSLValidation
 	}
 
-	logger := lager.NewLogger("service alerts client")
-	logger.RegisterSink(lager.NewWriterSink(os.Stderr, lager.INFO))
-
-	retryTimeLimit := retryTimeLimit(config)
-
-	httpClient := herottp.New(herottp.Config{Timeout: retryTimeLimit + successfulRequestTimeout, DisableTLSCertificateVerification: skipSSLValidation})
+	httpClient := herottp.New(herottp.Config{Timeout: requestTimeout, DisableTLSCertificateVerification: skipSSLValidation})
 	roundTripper := httpClient.Client.Transport
 
 	httpClient.Client.Transport = &retryhttp.RetryRoundTripper{
 		Logger:       logger,
 		Sleeper:      clock.NewClock(),
-		RetryPolicy:  retryPolicy(retryTimeLimit),
+		RetryPolicy:  retryhttp.ExponentialRetryPolicy{Timeout: totalDelayBetweenAttempts},
 		RoundTripper: roundTripper,
 	}
 
 	return &ServiceAlertsClient{config: config, httpClient: httpClient}
-}
-
-const successfulRequestTimeout = time.Second * 30
-const defaultHTTPRetryTimeLimitSeconds = 60
-
-func retryTimeLimit(config Config) time.Duration {
-	seconds := config.HTTPRetryTimeLimitSeconds
-	if seconds == 0 {
-		seconds = defaultHTTPRetryTimeLimitSeconds
-	}
-	return time.Second * time.Duration(seconds)
-}
-
-func retryPolicy(timeLimit time.Duration) retryhttp.RetryPolicy {
-	return retryhttp.ExponentialRetryPolicy{Timeout: timeLimit}
 }
 
 type HTTPRequestError struct {
