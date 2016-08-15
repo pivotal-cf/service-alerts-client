@@ -24,7 +24,7 @@
 		},
 		{
 			"ImportPath": "github.com/concourse/retryhttp",
-			"Rev": "3248b7b306c926bc1fc2ac759dfb306ba7b52480"
+			"Rev": "4004b2d86f323c8f1efe4cb1d530041c0fccb7d1"
 		},
 		{
 			"ImportPath": "github.com/craigfurman/herottp",

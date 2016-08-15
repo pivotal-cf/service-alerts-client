@@ -4,30 +4,49 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/concourse/retryhttp"
 )
 
 func (c *ServiceAlertsClient) SendServiceAlert(product, subject, serviceInstanceID, content string) error {
+	errChan := make(chan error)
+	go c.sendServiceAlert(product, subject, serviceInstanceID, content, errChan)
+	select {
+	case err := <-errChan:
+		return err
+	case <-time.After(requestTimeout):
+		return HTTPRequestError{error: errors.New("sending service alert timed out"), config: c.config}
+	}
+}
+
+func (c *ServiceAlertsClient) sendServiceAlert(product, subject, serviceInstanceID, content string, errChan chan<- error) {
 	spaceGUID, err := c.obtainSpaceGUID()
 	if err != nil {
-		return err
+		errChan <- err
+		return
 	}
 
 	token, err := c.obtainNotificationsClientToken()
 	if err != nil {
-		return err
+		errChan <- err
+		return
 	}
 	notificationRequest, err := c.createNotification(product, subject, serviceInstanceID, content)
 	if err != nil {
-		return err
+		errChan <- err
+		return
 	}
-	return c.sendNotification(token, notificationRequest, spaceGUID)
+
+	errChan <- c.sendNotification(token, notificationRequest, spaceGUID)
 }
 
 func (c *ServiceAlertsClient) sendNotification(uaaToken string, notificationRequest SpaceNotificationRequest, spaceGUID string) error {
@@ -131,13 +150,13 @@ func (c *ServiceAlertsClient) constructRequestForGrantType(username, password, g
 	return uaaTokenReq, nil
 }
 
-func (c *ServiceAlertsClient) sendCFApiRequest(uaaToken string, apiRequest CFApiRequest) ([]byte, error) {
+func (c *ServiceAlertsClient) sendCFApiRequest(uaaToken string, apiRequest CFApiRequest) (*http.Response, error) {
 	apiRequestURL, err := joinURL(c.config.CloudController.URL, apiRequest.Path, apiRequest.Filter)
 	if err != nil {
 		return nil, err
 	}
 
-	req, err := http.NewRequest("GET", apiRequestURL, bytes.NewReader([]byte{'{', '}'}))
+	req, err := http.NewRequest("GET", apiRequestURL, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -149,9 +168,7 @@ func (c *ServiceAlertsClient) sendCFApiRequest(uaaToken string, apiRequest CFApi
 		return nil, HTTPRequestError{error: err, config: c.config}
 	}
 
-	apiResponseBody, err := ioutil.ReadAll(apiResponse.Body)
-
-	return apiResponseBody, err
+	return apiResponse, nil
 }
 
 func (c *ServiceAlertsClient) obtainSpaceGUID() (string, error) {
@@ -191,13 +208,34 @@ func (c *ServiceAlertsClient) createSpaceQueryRequest(orgGUID string) CFApiReque
 	return spaceQueryRequest
 }
 
+type sleeper struct{}
+
+func (sleeper) Sleep(duration time.Duration) {
+	time.Sleep(duration)
+}
+
 func (c *ServiceAlertsClient) obtainGUIDUsingRequest(token string, request CFApiRequest) (string, error) {
-	responseBody, err := c.sendCFApiRequest(token, request)
+	var response *http.Response
+	var err error
+	retryhttp.Retry(c.logger, retryhttp.ExponentialRetryPolicy{Timeout: requestTimeout}, sleeper{}, func() bool {
+		response, err = c.sendCFApiRequest(token, request)
+		if err != nil {
+			return false
+		}
+		if response.StatusCode != http.StatusOK {
+			err = HTTPRequestError{error: fmt.Errorf("expected status 200, got %d", response.StatusCode), config: c.config}
+			return false
+		}
+
+		err = nil
+		return true
+	})
+
 	if err != nil {
 		return "", err
 	}
 
-	resource, err := unmarshalCFResponse(responseBody)
+	resource, err := unmarshalCFResponse(response.Body)
 	if err != nil {
 		return "", err
 	}
@@ -218,12 +256,13 @@ func formattedCFError(cfResourceType, cfResourceName string, err error) error {
 	}
 }
 
-func unmarshalCFResponse(body []byte) (response CFResourcesResponse, err error) {
-	err = json.Unmarshal(body, &response)
-	if err != nil {
+func unmarshalCFResponse(body io.ReadCloser) (CFResourcesResponse, error) {
+	defer body.Close()
+	var response CFResourcesResponse
+	if err := json.NewDecoder(body).Decode(&response); err != nil {
 		return CFResourcesResponse{}, fmt.Errorf("CF response not parseable: %s", err.Error())
 	}
-	return
+	return response, nil
 }
 
 type CFResourceNotFound struct {

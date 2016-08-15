@@ -14,6 +14,7 @@ import (
 type ServiceAlertsClient struct {
 	config     Config
 	httpClient *herottp.Client
+	logger     lager.Logger
 }
 
 const requestTimeout = time.Second * 60
@@ -35,7 +36,7 @@ func New(config Config, logger lager.Logger) *ServiceAlertsClient {
 		RoundTripper: roundTripper,
 	}
 
-	return &ServiceAlertsClient{config: config, httpClient: httpClient}
+	return &ServiceAlertsClient{config: config, httpClient: httpClient, logger: logger}
 }
 
 type HTTPRequestError struct {

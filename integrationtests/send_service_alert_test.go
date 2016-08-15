@@ -155,16 +155,13 @@ var _ = Describe("send-service-alert executable", func() {
 		)
 		runningBin, err = gexec.Start(cmd, io.MultiWriter(GinkgoWriter, &stdout), io.MultiWriter(GinkgoWriter, &stderr))
 		Expect(err).NotTo(HaveOccurred())
-		runningBin = runningBin.Wait(cmdWaitDuration)
+		Eventually(runningBin, cmdWaitDuration.Seconds()).Should(gexec.Exit())
 	})
 
 	captureActualRequest := func(_ http.ResponseWriter, req *http.Request) {
-		var err error
-		actualRequest, err := ioutil.ReadAll(req.Body)
-		req.Body.Close()
-		Expect(err).ShouldNot(HaveOccurred())
+		defer req.Body.Close()
 		requestMap = map[string]string{}
-		Expect(json.Unmarshal(actualRequest, &requestMap)).To(Succeed())
+		json.NewDecoder(req.Body).Decode(&requestMap) // Ignore errors, not every request has a body. Assertions will reveal whether body content is as expected
 	}
 
 	orgQueryHandler := func(fixturePath string) http.HandlerFunc {
@@ -178,6 +175,16 @@ var _ = Describe("send-service-alert executable", func() {
 			}),
 			ghttp.RespondWith(http.StatusOK, body, http.Header{}),
 			captureActualRequest,
+		)
+	}
+
+	orgQueryFailsHandler := func() http.HandlerFunc {
+		return ghttp.CombineHandlers(
+			ghttp.VerifyRequest("GET", "/v2/organizations", fmt.Sprintf("q=name:%s", cfOrgName)),
+			ghttp.VerifyHeader(http.Header{
+				"Authorization": {fmt.Sprintf("Bearer %s", cfToken)},
+			}),
+			ghttp.RespondWith(http.StatusInternalServerError, "I'm not JSON", nil),
 		)
 	}
 
@@ -493,6 +500,34 @@ var _ = Describe("send-service-alert executable", func() {
 			BeforeEach(func() {
 				cfServer.Close()
 				cfApiURL = "http://somewhere-that-does-not-exist.io"
+				cmdWaitDuration = time.Second * 62
+			})
+
+			It("should retry the the request up to the time limit", func() {
+				By("retrying the request")
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":1`))
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":2`))
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":3`))
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":4`))
+				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":5`))
+				Expect(stderr.String()).To(ContainSubstring(`"error":"giving up"`))
+
+				By("Logging a user error message to stdout")
+				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
+
+				By("exiting with code 2")
+				Expect(runningBin.ExitCode()).To(Equal(2))
+			})
+		})
+
+		Context("CF API returns an error", func() {
+			BeforeEach(func() {
+				handlers := []http.HandlerFunc{}
+				// allow 6 retries
+				for i := 0; i < 6; i++ {
+					handlers = append(handlers, orgQueryFailsHandler())
+				}
+				cfServer.AppendHandlers(handlers...)
 				cmdWaitDuration = time.Second * 32
 			})
 
