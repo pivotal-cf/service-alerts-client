@@ -51,7 +51,7 @@ var _ = Describe("send-service-alert executable", func() {
 		uaaURL                          string
 		cfApiURL                        string
 		cmdWaitDuration                 time.Duration
-		waitForRetriesDuration          = time.Second * 40
+		waitForRetriesDuration          = time.Second * 60
 	)
 
 	BeforeEach(func() {
