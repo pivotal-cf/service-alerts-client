@@ -7,15 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
 	"time"
-
-	"github.com/concourse/retryhttp"
 )
+
+const globalTimeout = 60 * time.Second
 
 func (c *ServiceAlertsClient) SendServiceAlert(product, subject, serviceInstanceID, content string) error {
 	errChan := make(chan error)
@@ -23,7 +22,7 @@ func (c *ServiceAlertsClient) SendServiceAlert(product, subject, serviceInstance
 	select {
 	case err := <-errChan:
 		return err
-	case <-time.After(requestTimeout):
+	case <-time.After(globalTimeout):
 		return HTTPRequestError{error: errors.New("sending service alert timed out"), config: c.config}
 	}
 }
@@ -65,15 +64,11 @@ func (c *ServiceAlertsClient) sendNotification(uaaToken string, notificationRequ
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", uaaToken))
 	req.Header.Set("Content-Type", "application/json")
 
-	sendNotificationResponse, err := c.httpClient.Do(req)
-	if err != nil {
-		return HTTPRequestError{error: err, config: c.config}
+	_, responseErr := c.doRequestWithRetries("CF Notifications", req)
+	if responseErr != nil {
+		return responseErr
 	}
 
-	if sendNotificationResponse.StatusCode != http.StatusOK {
-		respBody, err := ioutil.ReadAll(sendNotificationResponse.Body)
-		return fmt.Errorf("CF Notifications service expected to return HTTP 200, got %d. Body: %s%s\n", sendNotificationResponse.StatusCode, string(respBody), err)
-	}
 	return nil
 }
 
@@ -100,24 +95,22 @@ func (c *ServiceAlertsClient) obtainCFUserToken() (string, error) {
 }
 
 func (c *ServiceAlertsClient) obtainUAAToken(username, password, grantType string) (string, error) {
-	uaaTokenReq, err := c.constructRequestForGrantType(username, password, grantType)
-	if err != nil {
-		return errs(err)
+	uaaTokenReq, constructRequestErr := c.constructRequestForGrantType(username, password, grantType)
+	if constructRequestErr != nil {
+		return errs(constructRequestErr)
 	}
 
-	uaaTokenResp, err := c.httpClient.Do(uaaTokenReq)
-	if err != nil {
-		return errs(HTTPRequestError{error: err, config: c.config})
+	uaaTokenResp, uaaTokenReqError := c.doRequestWithRetries("UAA", uaaTokenReq)
+	if uaaTokenReqError != nil {
+		return errs(uaaTokenReqError)
 	}
+
 	defer uaaTokenResp.Body.Close()
-	if uaaTokenResp.StatusCode != http.StatusOK {
-		respBody, err := ioutil.ReadAll(uaaTokenResp.Body)
-		return errs(fmt.Errorf("UAA expected to return HTTP 200, got %d. Body: %s%s\n", uaaTokenResp.StatusCode, string(respBody), err))
-	}
 	var uaaTokenRespBody UAATokenResponse
-	if err := json.NewDecoder(uaaTokenResp.Body).Decode(&uaaTokenRespBody); err != nil {
-		return errs(fmt.Errorf("UAA response not parseable: %s", err.Error()))
+	if unmarshalBodyError := json.NewDecoder(uaaTokenResp.Body).Decode(&uaaTokenRespBody); unmarshalBodyError != nil {
+		return errs(fmt.Errorf("UAA response not parseable: %s", unmarshalBodyError.Error()))
 	}
+
 	return uaaTokenRespBody.Token, nil
 }
 
@@ -151,21 +144,21 @@ func (c *ServiceAlertsClient) constructRequestForGrantType(username, password, g
 }
 
 func (c *ServiceAlertsClient) sendCFApiRequest(uaaToken string, apiRequest CFApiRequest) (*http.Response, error) {
-	apiRequestURL, err := joinURL(c.config.CloudController.URL, apiRequest.Path, apiRequest.Filter)
-	if err != nil {
-		return nil, err
+	apiRequestURL, urlErr := joinURL(c.config.CloudController.URL, apiRequest.Path, apiRequest.Filter)
+	if urlErr != nil {
+		return nil, urlErr
 	}
 
-	req, err := http.NewRequest("GET", apiRequestURL, nil)
-	if err != nil {
-		return nil, err
+	req, buildRequestErr := http.NewRequest("GET", apiRequestURL, nil)
+	if buildRequestErr != nil {
+		return nil, buildRequestErr
 	}
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", uaaToken))
 
-	apiResponse, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, HTTPRequestError{error: err, config: c.config}
+	apiResponse, apiRequestError := c.doRequestWithRetries("CF API", req)
+	if apiRequestError != nil {
+		return nil, apiRequestError
 	}
 
 	return apiResponse, nil
@@ -208,29 +201,8 @@ func (c *ServiceAlertsClient) createSpaceQueryRequest(orgGUID string) CFApiReque
 	return spaceQueryRequest
 }
 
-type sleeper struct{}
-
-func (sleeper) Sleep(duration time.Duration) {
-	time.Sleep(duration)
-}
-
 func (c *ServiceAlertsClient) obtainGUIDUsingRequest(token string, request CFApiRequest) (string, error) {
-	var response *http.Response
-	var err error
-	retryhttp.Retry(c.logger, retryhttp.ExponentialRetryPolicy{Timeout: requestTimeout}, sleeper{}, func() bool {
-		response, err = c.sendCFApiRequest(token, request)
-		if err != nil {
-			return false
-		}
-		if response.StatusCode != http.StatusOK {
-			err = HTTPRequestError{error: fmt.Errorf("expected status 200, got %d", response.StatusCode), config: c.config}
-			return false
-		}
-
-		err = nil
-		return true
-	})
-
+	response, err := c.sendCFApiRequest(token, request)
 	if err != nil {
 		return "", err
 	}

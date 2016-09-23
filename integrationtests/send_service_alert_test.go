@@ -15,6 +15,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gbytes"
 	"github.com/onsi/gomega/gexec"
 	"github.com/onsi/gomega/ghttp"
 	"gopkg.in/yaml.v2"
@@ -29,7 +30,7 @@ var _ = Describe("send-service-alert executable", func() {
 		notificationsAuthRequestHandler http.HandlerFunc
 		runningBin                      *gexec.Session
 		stdout                          bytes.Buffer
-		stderr                          bytes.Buffer
+		stderr                          *gbytes.Buffer
 		configFilePath                  string
 		spaceGUIDFromCF                 = "3e6ca4d8-738f-46cb-989b-14290b887b47"
 		cfApiUsername                   = "some-cf-user"
@@ -144,7 +145,7 @@ var _ = Describe("send-service-alert executable", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		stdout = bytes.Buffer{}
-		stderr = bytes.Buffer{}
+		stderr = gbytes.NewBuffer()
 		cmd := exec.Command(
 			sendServiceAlertsBin,
 			"-config", configFilePath,
@@ -153,7 +154,7 @@ var _ = Describe("send-service-alert executable", func() {
 			"-subject", subject,
 			"-content", content,
 		)
-		runningBin, err = gexec.Start(cmd, io.MultiWriter(GinkgoWriter, &stdout), io.MultiWriter(GinkgoWriter, &stderr))
+		runningBin, err = gexec.Start(cmd, io.MultiWriter(GinkgoWriter, &stdout), io.MultiWriter(GinkgoWriter, stderr))
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(runningBin, cmdWaitDuration.Seconds()).Should(gexec.Exit())
 	})
@@ -345,7 +346,7 @@ var _ = Describe("send-service-alert executable", func() {
 			})
 		})
 
-		Describe("notifications service failures", func() {
+		Describe("CF Notifications service failures", func() {
 			Context("when the notifications service returns HTTP 500", func() {
 				BeforeEach(func() {
 					notificationServer.AppendHandlers(
@@ -354,10 +355,23 @@ var _ = Describe("send-service-alert executable", func() {
 							ghttp.RespondWith(http.StatusInternalServerError, "something went wrong", http.Header{}),
 						),
 					)
+					cmdWaitDuration = time.Second * 32
 				})
 
-				It("exits with 1", func() {
-					Expect(runningBin.ExitCode()).To(Equal(1))
+				It("should retry the the request up to the time limit", func() {
+					By("retrying the request")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 0")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 1")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 2")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 3")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 4")
+					Expect(stderr).To(gbytes.Say("Giving up, CF Notifications request failed"))
+
+					By("Logging a user error message to stdout")
+					Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
+
+					By("exiting with code 2")
+					Expect(runningBin.ExitCode()).To(Equal(2))
 				})
 			})
 
@@ -370,12 +384,40 @@ var _ = Describe("send-service-alert executable", func() {
 
 				It("should retry the the request up to the time limit", func() {
 					By("retrying the request")
-					Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":1`))
-					Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":2`))
-					Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":3`))
-					Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":4`))
-					Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":5`))
-					Expect(stderr.String()).To(ContainSubstring(`"error":"giving up"`))
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 0")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 1")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 2")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 3")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 4")
+					Expect(stderr).To(gbytes.Say("Giving up, CF Notifications request failed"))
+
+					By("Logging a user error message to stdout")
+					Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
+
+					By("exiting with code 2")
+					Expect(runningBin.ExitCode()).To(Equal(2))
+				})
+			})
+
+			Context("route to the notifications server does not exist", func() {
+				BeforeEach(func() {
+					notificationServer.AppendHandlers(
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGUIDFromCF)),
+							ghttp.RespondWith(http.StatusNotFound, "Not Found: Requested route ('notifications.cf.com') does not exist.", http.Header{}),
+						),
+					)
+					cmdWaitDuration = time.Second * 32
+				})
+
+				It("should retry the the request up to the time limit", func() {
+					By("retrying the request")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 0")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 1")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 2")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 3")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 4")
+					Expect(stderr).To(gbytes.Say("Giving up, CF Notifications request failed"))
 
 					By("Logging a user error message to stdout")
 					Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
@@ -394,14 +436,23 @@ var _ = Describe("send-service-alert executable", func() {
 					ghttp.VerifyRequest("POST", "/oauth/token", ""),
 					ghttp.RespondWith(http.StatusInternalServerError, "{}", http.Header{}),
 				))
+				cmdWaitDuration = time.Second * 32
 			})
 
-			It("exits with 1", func() {
-				Expect(runningBin.ExitCode()).To(Equal(1))
-			})
+			It("should retry the the request up to the time limit", func() {
+				By("retrying the request")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 0")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 1")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 2")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 3")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 4")
+				Expect(stderr).To(gbytes.Say("Giving up, UAA request failed"))
 
-			It("logs the error", func() {
-				Expect(stderr.String()).To(ContainSubstring("UAA expected to return HTTP 200, got 500."))
+				By("Logging a user error message to stdout")
+				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
+
+				By("exiting with code 2")
+				Expect(runningBin.ExitCode()).To(Equal(2))
 			})
 		})
 
@@ -418,7 +469,7 @@ var _ = Describe("send-service-alert executable", func() {
 			})
 
 			It("logs the error", func() {
-				Expect(stderr.String()).To(ContainSubstring("UAA response not parseable:"))
+				Expect(stderr).To(gbytes.Say("UAA response not parseable:"))
 			})
 		})
 
@@ -431,12 +482,12 @@ var _ = Describe("send-service-alert executable", func() {
 
 			It("should retry the the request up to the time limit", func() {
 				By("retrying the request")
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":1`))
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":2`))
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":3`))
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":4`))
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":5`))
-				Expect(stderr.String()).To(ContainSubstring(`"error":"giving up"`))
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 0")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 1")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 2")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 3")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 4")
+				Expect(stderr).To(gbytes.Say("Giving up, UAA request failed"))
 
 				By("Logging a user error message to stdout")
 				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
@@ -459,8 +510,12 @@ var _ = Describe("send-service-alert executable", func() {
 					Expect(runningBin.ExitCode()).To(Equal(1))
 				})
 
+				It("does not retry the request", func() {
+					Expect(stderr).NotTo(gbytes.Say("Retrying in"))
+				})
+
 				It("logs the error", func() {
-					Expect(stderr.String()).To(ContainSubstring("UAA expected to return HTTP 200, got 401."))
+					Expect(stderr).To(gbytes.Say("UAA expected to return HTTP 200, got 401."))
 				})
 			})
 
@@ -485,7 +540,7 @@ var _ = Describe("send-service-alert executable", func() {
 				})
 
 				It("logs the error", func() {
-					Expect(stderr.String()).To(ContainSubstring("UAA expected to return HTTP 200, got 401."))
+					Expect(stderr).To(gbytes.Say("UAA expected to return HTTP 200, got 401."))
 				})
 			})
 		})
@@ -500,17 +555,17 @@ var _ = Describe("send-service-alert executable", func() {
 			BeforeEach(func() {
 				cfServer.Close()
 				cfApiURL = "http://somewhere-that-does-not-exist.io"
-				cmdWaitDuration = time.Second * 62
+				cmdWaitDuration = time.Second * 32
 			})
 
 			It("should retry the the request up to the time limit", func() {
 				By("retrying the request")
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":1`))
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":2`))
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":3`))
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":4`))
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":5`))
-				Expect(stderr.String()).To(ContainSubstring(`"error":"giving up"`))
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 0")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 1")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 2")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 3")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 4")
+				Expect(stderr).To(gbytes.Say("Giving up, CF API request failed"))
 
 				By("Logging a user error message to stdout")
 				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
@@ -520,7 +575,7 @@ var _ = Describe("send-service-alert executable", func() {
 			})
 		})
 
-		Context("CF API returns an error", func() {
+		Context("CF API returns 500", func() {
 			BeforeEach(func() {
 				handlers := []http.HandlerFunc{}
 				// allow 6 retries
@@ -533,12 +588,12 @@ var _ = Describe("send-service-alert executable", func() {
 
 			It("should retry the the request up to the time limit", func() {
 				By("retrying the request")
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":1`))
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":2`))
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":3`))
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":4`))
-				Expect(stderr.String()).To(ContainSubstring(`"failed-attempts":5`))
-				Expect(stderr.String()).To(ContainSubstring(`"error":"giving up"`))
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 0")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 1")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 2")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 3")
+				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 5 retries got 4")
+				Expect(stderr).To(gbytes.Say("Giving up, CF API request failed"))
 
 				By("Logging a user error message to stdout")
 				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
@@ -558,7 +613,7 @@ var _ = Describe("send-service-alert executable", func() {
 			})
 
 			It("logs the error", func() {
-				Expect(stderr.String()).To(ContainSubstring(fmt.Sprintf("CF org not found: '%s'", cfOrgName)))
+				Expect(stderr).To(gbytes.Say(fmt.Sprintf("CF org not found: '%s'", cfOrgName)))
 			})
 		})
 
@@ -572,7 +627,7 @@ var _ = Describe("send-service-alert executable", func() {
 			})
 
 			It("logs an error", func() {
-				Expect(stderr.String()).To(ContainSubstring("CF response not parseable:"))
+				Expect(stderr).To(gbytes.Say("CF response not parseable:"))
 			})
 		})
 
@@ -589,7 +644,7 @@ var _ = Describe("send-service-alert executable", func() {
 			})
 
 			It("logs the error", func() {
-				Expect(stderr.String()).To(ContainSubstring(fmt.Sprintf("CF space not found: '%s'", cfSpaceName)))
+				Expect(stderr).To(gbytes.Say(fmt.Sprintf("CF space not found: '%s'", cfSpaceName)))
 			})
 		})
 
@@ -606,7 +661,7 @@ var _ = Describe("send-service-alert executable", func() {
 			})
 
 			It("logs an error", func() {
-				Expect(stderr.String()).To(ContainSubstring("CF response not parseable:"))
+				Expect(stderr).To(gbytes.Say("CF response not parseable:"))
 			})
 		})
 	})
