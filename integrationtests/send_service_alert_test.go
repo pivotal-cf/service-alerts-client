@@ -51,6 +51,7 @@ var _ = Describe("send-service-alert executable", func() {
 		uaaURL                          string
 		cfApiURL                        string
 		cmdWaitDuration                 time.Duration
+		waitForRetriesDuration          = time.Second * 40
 	)
 
 	BeforeEach(func() {
@@ -355,7 +356,7 @@ var _ = Describe("send-service-alert executable", func() {
 							ghttp.RespondWith(http.StatusInternalServerError, "something went wrong", http.Header{}),
 						),
 					)
-					cmdWaitDuration = time.Second * 32
+					cmdWaitDuration = waitForRetriesDuration
 				})
 
 				It("should retry the the request up to the time limit", func() {
@@ -379,7 +380,7 @@ var _ = Describe("send-service-alert executable", func() {
 				BeforeEach(func() {
 					notificationServer.Close()
 					notificationServerURL = "http://somewhere-that-does-not-exist.io"
-					cmdWaitDuration = time.Second * 32
+					cmdWaitDuration = waitForRetriesDuration
 				})
 
 				It("should retry the the request up to the time limit", func() {
@@ -407,7 +408,7 @@ var _ = Describe("send-service-alert executable", func() {
 							ghttp.RespondWith(http.StatusNotFound, "Not Found: Requested route ('notifications.cf.com') does not exist.", http.Header{}),
 						),
 					)
-					cmdWaitDuration = time.Second * 32
+					cmdWaitDuration = waitForRetriesDuration
 				})
 
 				It("should retry the the request up to the time limit", func() {
@@ -436,7 +437,7 @@ var _ = Describe("send-service-alert executable", func() {
 					ghttp.VerifyRequest("POST", "/oauth/token", ""),
 					ghttp.RespondWith(http.StatusInternalServerError, "{}", http.Header{}),
 				))
-				cmdWaitDuration = time.Second * 32
+				cmdWaitDuration = waitForRetriesDuration
 			})
 
 			It("should retry the the request up to the time limit", func() {
@@ -477,7 +478,7 @@ var _ = Describe("send-service-alert executable", func() {
 			BeforeEach(func() {
 				uaaServer.Close()
 				uaaURL = "http://somewhere-that-does-not-exist.io"
-				cmdWaitDuration = time.Second * 32
+				cmdWaitDuration = waitForRetriesDuration
 			})
 
 			It("should retry the the request up to the time limit", func() {
@@ -555,7 +556,7 @@ var _ = Describe("send-service-alert executable", func() {
 			BeforeEach(func() {
 				cfServer.Close()
 				cfApiURL = "http://somewhere-that-does-not-exist.io"
-				cmdWaitDuration = time.Second * 32
+				cmdWaitDuration = waitForRetriesDuration
 			})
 
 			It("should retry the the request up to the time limit", func() {
@@ -583,7 +584,7 @@ var _ = Describe("send-service-alert executable", func() {
 					handlers = append(handlers, orgQueryFailsHandler())
 				}
 				cfServer.AppendHandlers(handlers...)
-				cmdWaitDuration = time.Second * 32
+				cmdWaitDuration = waitForRetriesDuration
 			})
 
 			It("should retry the the request up to the time limit", func() {
