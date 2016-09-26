@@ -53,7 +53,7 @@ func (c *ServiceAlertsClient) doRequestWithRetries(label string, req *http.Reque
 
 func (c *ServiceAlertsClient) buildRetryLogging(label string) func(err error, next time.Duration) {
 	return func(err error, next time.Duration) {
-		c.logger.Printf("Retrying in %f seconds, %s request error: %s", next.Seconds(), label, err)
+		c.logger.Printf("Retrying in %d seconds, %s request error: %s", int(next.Seconds()), label, err)
 	}
 }
 
@@ -66,7 +66,7 @@ func (c *ServiceAlertsClient) buildExponentialBackoff() *backoff.ExponentialBack
 	}
 
 	exponentialBackoff.InitialInterval = 1 * time.Second
-	exponentialBackoff.RandomizationFactor = 0.2
+	exponentialBackoff.RandomizationFactor = 0
 	exponentialBackoff.Multiplier = 2
 	exponentialBackoff.MaxInterval = 16 * time.Second
 	exponentialBackoff.MaxElapsedTime = retryTimeout
