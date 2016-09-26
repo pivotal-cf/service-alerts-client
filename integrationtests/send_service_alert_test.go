@@ -1,7 +1,6 @@
 package integration_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,7 +28,6 @@ var _ = Describe("send-service-alert executable", func() {
 		cfAuthRequestHandler            http.HandlerFunc
 		notificationsAuthRequestHandler http.HandlerFunc
 		runningBin                      *gexec.Session
-		stdout                          bytes.Buffer
 		stderr                          *gbytes.Buffer
 		configFilePath                  string
 		spaceGUIDFromCF                 = "3e6ca4d8-738f-46cb-989b-14290b887b47"
@@ -145,7 +143,6 @@ var _ = Describe("send-service-alert executable", func() {
 		_, err = configFile.Write(configBytes)
 		Expect(err).NotTo(HaveOccurred())
 
-		stdout = bytes.Buffer{}
 		stderr = gbytes.NewBuffer()
 		cmd := exec.Command(
 			sendServiceAlertsBin,
@@ -155,7 +152,7 @@ var _ = Describe("send-service-alert executable", func() {
 			"-subject", subject,
 			"-content", content,
 		)
-		runningBin, err = gexec.Start(cmd, io.MultiWriter(GinkgoWriter, &stdout), io.MultiWriter(GinkgoWriter, stderr))
+		runningBin, err = gexec.Start(cmd, GinkgoWriter, io.MultiWriter(GinkgoWriter, stderr))
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(runningBin, cmdWaitDuration.Seconds()).Should(gexec.Exit())
 	})
@@ -369,7 +366,7 @@ var _ = Describe("send-service-alert executable", func() {
 					Expect(stderr).To(gbytes.Say("Giving up, CF Notifications request failed"))
 
 					By("Logging a user error message to stdout")
-					Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
+					Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 					By("exiting with code 2")
 					Expect(runningBin.ExitCode()).To(Equal(2))
@@ -393,7 +390,7 @@ var _ = Describe("send-service-alert executable", func() {
 					Expect(stderr).To(gbytes.Say("Giving up, CF Notifications request failed"))
 
 					By("Logging a user error message to stdout")
-					Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
+					Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 					By("exiting with code 2")
 					Expect(runningBin.ExitCode()).To(Equal(2))
@@ -405,7 +402,7 @@ var _ = Describe("send-service-alert executable", func() {
 					notificationServer.AppendHandlers(
 						ghttp.CombineHandlers(
 							ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGUIDFromCF)),
-							ghttp.RespondWith(http.StatusNotFound, "Not Found: Requested route ('notifications.cf.com') does not exist.", http.Header{}),
+							ghttp.RespondWith(http.StatusNotFound, "404 Not Found: Requested route ('notifications.example.com') does not exist.", http.Header{}),
 						),
 					)
 					cmdWaitDuration = waitForRetriesDuration
@@ -421,7 +418,7 @@ var _ = Describe("send-service-alert executable", func() {
 					Expect(stderr).To(gbytes.Say("Giving up, CF Notifications request failed"))
 
 					By("Logging a user error message to stdout")
-					Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
+					Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 					By("exiting with code 2")
 					Expect(runningBin.ExitCode()).To(Equal(2))
@@ -450,7 +447,7 @@ var _ = Describe("send-service-alert executable", func() {
 				Expect(stderr).To(gbytes.Say("Giving up, UAA request failed"))
 
 				By("Logging a user error message to stdout")
-				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
+				Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 				By("exiting with code 2")
 				Expect(runningBin.ExitCode()).To(Equal(2))
@@ -491,7 +488,7 @@ var _ = Describe("send-service-alert executable", func() {
 				Expect(stderr).To(gbytes.Say("Giving up, UAA request failed"))
 
 				By("Logging a user error message to stdout")
-				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
+				Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 				By("exiting with code 2")
 				Expect(runningBin.ExitCode()).To(Equal(2))
@@ -569,7 +566,7 @@ var _ = Describe("send-service-alert executable", func() {
 				Expect(stderr).To(gbytes.Say("Giving up, CF API request failed"))
 
 				By("Logging a user error message to stdout")
-				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
+				Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 				By("exiting with code 2")
 				Expect(runningBin.ExitCode()).To(Equal(2))
@@ -597,7 +594,7 @@ var _ = Describe("send-service-alert executable", func() {
 				Expect(stderr).To(gbytes.Say("Giving up, CF API request failed"))
 
 				By("Logging a user error message to stdout")
-				Expect(stdout.String()).To(Equal(fmt.Sprintf("failed to send notification to org: %s, space: %s\n", cfOrgName, cfSpaceName)))
+				Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 				By("exiting with code 2")
 				Expect(runningBin.ExitCode()).To(Equal(2))

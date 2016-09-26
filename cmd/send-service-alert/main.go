@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -26,14 +25,15 @@ func main() {
 	var config client.Config
 	must(yaml.Unmarshal(configBytes, &config))
 
-	logger := log.New(os.Stderr, "[service alerts client] ", log.LstdFlags)
+	logFlags := log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC
+	logger := log.New(os.Stderr, "[service alerts client] ", logFlags)
 
 	alertsClient := client.New(config, logger)
 	clientErr := alertsClient.SendServiceAlert(*product, *subject, *serviceInstanceID, *content)
 	if clientErr != nil {
 		switch clientErr.(type) {
 		case client.HTTPRequestError:
-			fmt.Fprintln(os.Stdout, clientErr.(client.HTTPRequestError).ErrorMessageForUser())
+			logger.Println(clientErr.(client.HTTPRequestError).ErrorMessageForUser())
 			os.Exit(2)
 		default:
 			mustNot(clientErr)
