@@ -1,8 +1,9 @@
 package client
 
 type Config struct {
-	CloudController    CloudController    `yaml:"cloud_controller"`
-	NotificationTarget NotificationTarget `yaml:"notification_target"`
+	CloudController     CloudController    `yaml:"cloud_controller"`
+	NotificationTarget  NotificationTarget `yaml:"notification_target"`
+	RetryTimeoutSeconds int                `yaml:"retry_timeout_seconds,omitempty"`
 }
 
 type CloudController struct {

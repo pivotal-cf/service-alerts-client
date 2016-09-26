@@ -9,6 +9,8 @@ import (
 	"github.com/cenk/backoff"
 )
 
+const defaultRetryTimeout = 30 * time.Second
+
 func (c *ServiceAlertsClient) doRequestWithRetries(label string, req *http.Request) (*http.Response, error) {
 	var apiResponse *http.Response
 
@@ -35,7 +37,7 @@ func (c *ServiceAlertsClient) doRequestWithRetries(label string, req *http.Reque
 		}
 	}
 
-	retryError := backoff.RetryNotify(retryRequest, buildExponentialBackoff(), c.buildRetryLogging(label))
+	retryError := backoff.RetryNotify(retryRequest, c.buildExponentialBackoff(), c.buildRetryLogging(label))
 	if retryError != nil {
 		c.logger.Printf("Giving up, %s request failed: %s", label, retryError)
 		return nil, retryError
@@ -55,14 +57,19 @@ func (c *ServiceAlertsClient) buildRetryLogging(label string) func(err error, ne
 	}
 }
 
-func buildExponentialBackoff() *backoff.ExponentialBackOff {
+func (c *ServiceAlertsClient) buildExponentialBackoff() *backoff.ExponentialBackOff {
 	exponentialBackoff := backoff.NewExponentialBackOff()
+
+	retryTimeout := defaultRetryTimeout
+	if c.config.RetryTimeoutSeconds != 0 {
+		retryTimeout = time.Duration(c.config.RetryTimeoutSeconds) * time.Second
+	}
 
 	exponentialBackoff.InitialInterval = 1 * time.Second
 	exponentialBackoff.RandomizationFactor = 0.2
 	exponentialBackoff.Multiplier = 2
 	exponentialBackoff.MaxInterval = 16 * time.Second
-	exponentialBackoff.MaxElapsedTime = 30 * time.Second
+	exponentialBackoff.MaxElapsedTime = retryTimeout
 
 	return exponentialBackoff
 }
