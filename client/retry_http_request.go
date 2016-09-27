@@ -15,26 +15,21 @@ func (c *ServiceAlertsClient) doRequestWithRetries(label string, req *http.Reque
 	var apiResponse *http.Response
 
 	retryRequest := func() error {
-		var apiRequestErr error
+		var networkErr error
 
-		apiResponse, apiRequestErr = c.httpClient.Do(req)
-		if apiRequestErr != nil {
-			networkErr := HTTPRequestError{error: apiRequestErr, config: c.config}
-			return networkErr
+		apiResponse, networkErr = c.httpClient.Do(req)
+		if networkErr != nil {
+			return HTTPRequestError{error: networkErr, config: c.config}
 		}
 
-		switch apiResponse.StatusCode {
-		case http.StatusOK:
-			return nil
-		case http.StatusUnauthorized:
-			return nil
-		default:
-			retryStatusCodeErr := HTTPRequestError{
+		if retryableResponse(apiResponse) {
+			return HTTPRequestError{
 				error:  fmt.Errorf("%s expected to return HTTP 200, got %d. %s", label, apiResponse.StatusCode, responseBodyDetails(apiResponse)),
 				config: c.config,
 			}
-			return retryStatusCodeErr
 		}
+
+		return nil
 	}
 
 	retryError := backoff.RetryNotify(retryRequest, c.buildExponentialBackoff(), c.buildRetryLogging(label))
@@ -86,4 +81,9 @@ func responseBodyDetails(response *http.Response) string {
 	}
 
 	return details
+}
+
+func retryableResponse(apiResponse *http.Response) bool {
+	return apiResponse.StatusCode >= http.StatusInternalServerError ||
+		(apiResponse.StatusCode == http.StatusNotFound && apiResponse.Header.Get("X-Cf-Routererror") == "unknown_route")
 }

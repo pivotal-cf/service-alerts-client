@@ -182,6 +182,18 @@ var _ = Describe("send-service-alert executable", func() {
 		)
 	}
 
+	spaceQueryForbidden := func() http.HandlerFunc {
+		forbiddenBody := `{"code": 10003,"description": "You are not authorized to perform the requested action","error_code": "CF-NotAuthorized"}`
+
+		return ghttp.CombineHandlers(
+			ghttp.VerifyRequest("GET", "/v2/organizations/97160533-c474-41dc-8068-4354171361d9/spaces", fmt.Sprintf("q=name:%s", cfSpaceName)),
+			ghttp.VerifyHeader(http.Header{
+				"Authorization": {fmt.Sprintf("Bearer %s", cfToken)},
+			}),
+			ghttp.RespondWith(http.StatusForbidden, forbiddenBody, http.Header{}),
+		)
+	}
+
 	orgQueryFailsHandler := func() http.HandlerFunc {
 		return ghttp.CombineHandlers(
 			ghttp.VerifyRequest("GET", "/v2/organizations", fmt.Sprintf("q=name:%s", cfOrgName)),
@@ -384,7 +396,7 @@ var _ = Describe("send-service-alert executable", func() {
 							ghttp.RespondWith(http.StatusInternalServerError, "something went wrong", http.Header{}),
 						),
 					)
-					cmdWaitDuration = 35 * time.Second
+					cmdWaitDuration = 33 * time.Second
 					retryTimeoutSeconds = 0
 				})
 
@@ -398,11 +410,68 @@ var _ = Describe("send-service-alert executable", func() {
 					Expect(stderr).NotTo(gbytes.Say("Retrying in"), "expected to give up after 6 failed attempts")
 					Expect(stderr).To(gbytes.Say("Giving up, CF Notifications request failed"))
 
-					By("Logging a user error message to stdout")
+					By("Logging a user error message to stderr")
 					Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 					By("exiting with code 2")
 					Expect(runningBin.ExitCode()).To(Equal(2))
+				})
+			})
+
+			Context("when the notifications service takes more than 30 seconds to respond", func() {
+				BeforeEach(func() {
+					notificationServer.AppendHandlers(
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGUIDFromCF)),
+							func(http.ResponseWriter, *http.Request) {
+								time.Sleep(31 * time.Second)
+							},
+						),
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGUIDFromCF)),
+							ghttp.RespondWith(http.StatusInternalServerError, "something went wrong", http.Header{}),
+						),
+					)
+					cmdWaitDuration = 33 * time.Second
+					retryTimeoutSeconds = 31
+				})
+
+				It("times out the request after 30 seconds and retries", func() {
+					By("retrying the request")
+					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 2 attempts got 0")
+
+					By("timing out the request")
+					Expect(stderr).To(gbytes.Say(`request canceled \(Client.Timeout exceeded while awaiting headers\)`))
+
+					By("Logging a user error message to stderr")
+					Expect(stderr).To(gbytes.Say("Giving up, CF Notifications request failed"))
+					Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
+
+					By("exiting with code 2")
+					Expect(runningBin.ExitCode()).To(Equal(2))
+				})
+			})
+
+			Context("when the notifications service returns HTTP 422 Unprocessable Entity", func() {
+				BeforeEach(func() {
+					notificationServer.AppendHandlers(
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGUIDFromCF)),
+							ghttp.RespondWith(http.StatusUnprocessableEntity, `{"errors":["\"kind_id\" is a required field,\"text\" or \"html\" fields must be supplied"]}`, http.Header{}),
+						),
+					)
+				})
+
+				It("exits with 1", func() {
+					Expect(runningBin.ExitCode()).To(Equal(1))
+				})
+
+				It("does not retry the request", func() {
+					Expect(stderr).NotTo(gbytes.Say("Retrying in"))
+				})
+
+				It("logs the error", func() {
+					Expect(stderr).To(gbytes.Say("CF Notifications expected to return HTTP 200, got 422."))
 				})
 			})
 
@@ -418,7 +487,7 @@ var _ = Describe("send-service-alert executable", func() {
 					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 2 attempts got 0")
 					Expect(stderr).To(gbytes.Say("Giving up, CF Notifications request failed"))
 
-					By("Logging a user error message to stdout")
+					By("Logging a user error message to stderr")
 					Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 					By("exiting with code 2")
@@ -426,12 +495,38 @@ var _ = Describe("send-service-alert executable", func() {
 				})
 			})
 
-			Context("route to the notifications server does not exist", func() {
+			Context("notifications service returns 404 Space not found", func() {
 				BeforeEach(func() {
 					notificationServer.AppendHandlers(
 						ghttp.CombineHandlers(
 							ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGUIDFromCF)),
-							ghttp.RespondWith(http.StatusNotFound, "404 Not Found: Requested route ('notifications.example.com') does not exist.", http.Header{}),
+							ghttp.RespondWith(http.StatusNotFound, `{"errors":["CloudController Failure: Space \"123\" could not be found"]}`, http.Header{}),
+						),
+					)
+				})
+
+				It("exits with 1", func() {
+					Expect(runningBin.ExitCode()).To(Equal(1))
+				})
+
+				It("does not retry the request", func() {
+					Expect(stderr).NotTo(gbytes.Say("Retrying in"))
+				})
+
+				It("logs the error", func() {
+					Expect(stderr).To(gbytes.Say("CF Notifications expected to return HTTP 200, got 404."))
+				})
+			})
+
+			Context("route to the notifications server does not exist", func() {
+				BeforeEach(func() {
+					header := http.Header{}
+					header.Add("X-Cf-Routererror", "unknown_route")
+
+					notificationServer.AppendHandlers(
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGUIDFromCF)),
+							ghttp.RespondWith(http.StatusNotFound, "404 Not Found: Requested route ('notifications.example.com') does not exist.", header),
 						),
 					)
 					cmdWaitDuration = waitForRetriesDuration
@@ -442,7 +537,7 @@ var _ = Describe("send-service-alert executable", func() {
 					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 2 attempts got 0")
 					Expect(stderr).To(gbytes.Say("Giving up, CF Notifications request failed"))
 
-					By("Logging a user error message to stdout")
+					By("Logging a user error message to stderr")
 					Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 					By("exiting with code 2")
@@ -467,7 +562,7 @@ var _ = Describe("send-service-alert executable", func() {
 				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 2 attempts got 0")
 				Expect(stderr).To(gbytes.Say("Giving up, UAA request failed"))
 
-				By("Logging a user error message to stdout")
+				By("Logging a user error message to stderr")
 				Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 				By("exiting with code 2")
@@ -504,7 +599,7 @@ var _ = Describe("send-service-alert executable", func() {
 				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 2 attempts got 0")
 				Expect(stderr).To(gbytes.Say("Giving up, UAA request failed"))
 
-				By("Logging a user error message to stdout")
+				By("Logging a user error message to stderr")
 				Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 				By("exiting with code 2")
@@ -578,11 +673,32 @@ var _ = Describe("send-service-alert executable", func() {
 				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 2 attempts got 0")
 				Expect(stderr).To(gbytes.Say("Giving up, CF API request failed"))
 
-				By("Logging a user error message to stdout")
+				By("Logging a user error message to stderr")
 				Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 				By("exiting with code 2")
 				Expect(runningBin.ExitCode()).To(Equal(2))
+			})
+		})
+
+		Context("CF API return 403 Forbidden", func() {
+			BeforeEach(func() {
+				cfServer.AppendHandlers(
+					orgQueryHandler("fixtures/cf_orgs_response.json"),
+					spaceQueryForbidden(),
+				)
+			})
+
+			It("exits with 1", func() {
+				Expect(runningBin.ExitCode()).To(Equal(1))
+			})
+
+			It("does not retry the request", func() {
+				Expect(stderr).NotTo(gbytes.Say("Retrying in"))
+			})
+
+			It("logs the error", func() {
+				Expect(stderr).To(gbytes.Say("CF API expected to return HTTP 200, got 403."))
 			})
 		})
 
@@ -602,7 +718,7 @@ var _ = Describe("send-service-alert executable", func() {
 				Expect(stderr).To(gbytes.Say("Retrying in"), "expected 2 attempts got 0")
 				Expect(stderr).To(gbytes.Say("Giving up, CF API request failed"))
 
-				By("Logging a user error message to stdout")
+				By("Logging a user error message to stderr")
 				Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 				By("exiting with code 2")
