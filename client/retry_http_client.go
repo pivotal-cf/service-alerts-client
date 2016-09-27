@@ -3,38 +3,60 @@ package client
 import (
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"time"
 
 	"github.com/cenk/backoff"
+	"github.com/craigfurman/herottp"
 )
 
 const defaultRetryTimeout = 30 * time.Second
 
-func (c *ServiceAlertsClient) doRequestWithRetries(label string, req *http.Request) (*http.Response, error) {
+type RetryHTTPClient struct {
+	config     Config
+	httpClient *herottp.Client
+	logger     *log.Logger
+}
+
+func NewRetryHTTPClient(config Config, logger *log.Logger) *RetryHTTPClient {
+	skipSSLValidation := false
+	if config.NotificationTarget.SkipSSLValidation != nil {
+		skipSSLValidation = *config.NotificationTarget.SkipSSLValidation
+	}
+
+	httpClient := herottp.New(herottp.Config{
+		Timeout: requestTimeout,
+		DisableTLSCertificateVerification: skipSSLValidation,
+	})
+
+	return &RetryHTTPClient{config: config, httpClient: httpClient, logger: logger}
+}
+
+func (r *RetryHTTPClient) doRequestWithRetries(label string, req *http.Request) (*http.Response, error) {
 	var apiResponse *http.Response
 
 	retryRequest := func() error {
 		var networkErr error
 
-		apiResponse, networkErr = c.httpClient.Do(req)
+		apiResponse, networkErr = r.httpClient.Do(req)
 		if networkErr != nil {
-			return HTTPRequestError{error: networkErr, config: c.config}
+			return HTTPRequestError{error: networkErr, config: r.config}
 		}
 
 		if retryableResponse(apiResponse) {
 			return HTTPRequestError{
 				error:  fmt.Errorf("%s expected to return HTTP 200, got %d. %s", label, apiResponse.StatusCode, responseBodyDetails(apiResponse)),
-				config: c.config,
+				config: r.config,
 			}
 		}
 
 		return nil
 	}
 
-	retryError := backoff.RetryNotify(retryRequest, c.buildExponentialBackoff(), c.buildRetryLogging(label))
+	retryError := backoff.RetryNotify(retryRequest, r.buildExponentialBackoff(), r.buildRetryLogging(label))
 	if retryError != nil {
-		c.logger.Printf("Giving up, %s request failed: %s", label, retryError)
+		r.logger.Printf("Giving up, %s request failed: %s", label, retryError)
 		return nil, retryError
 	}
 
@@ -46,18 +68,18 @@ func (c *ServiceAlertsClient) doRequestWithRetries(label string, req *http.Reque
 	return apiResponse, nil
 }
 
-func (c *ServiceAlertsClient) buildRetryLogging(label string) func(err error, next time.Duration) {
+func (r *RetryHTTPClient) buildRetryLogging(label string) func(err error, next time.Duration) {
 	return func(err error, next time.Duration) {
-		c.logger.Printf("Retrying in %d seconds, %s request error: %s", int(next.Seconds()), label, err)
+		r.logger.Printf("Retrying in %d seconds, %s request error: %s", int(next.Seconds()), label, err)
 	}
 }
 
-func (c *ServiceAlertsClient) buildExponentialBackoff() *backoff.ExponentialBackOff {
+func (r *RetryHTTPClient) buildExponentialBackoff() *backoff.ExponentialBackOff {
 	exponentialBackoff := backoff.NewExponentialBackOff()
 
 	retryTimeout := defaultRetryTimeout
-	if c.config.RetryTimeoutSeconds != 0 {
-		retryTimeout = time.Duration(c.config.RetryTimeoutSeconds) * time.Second
+	if r.config.RetryTimeoutSeconds != 0 {
+		retryTimeout = time.Duration(r.config.RetryTimeoutSeconds) * time.Second
 	}
 
 	exponentialBackoff.InitialInterval = 1 * time.Second

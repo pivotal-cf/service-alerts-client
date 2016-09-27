@@ -4,29 +4,18 @@ import (
 	"fmt"
 	"log"
 	"time"
-
-	"github.com/craigfurman/herottp"
 )
 
 type ServiceAlertsClient struct {
 	config     Config
-	httpClient *herottp.Client
+	httpClient *RetryHTTPClient
 	logger     *log.Logger
 }
 
 const requestTimeout = 30 * time.Second
 
 func New(config Config, logger *log.Logger) *ServiceAlertsClient {
-	skipSSLValidation := false
-	if config.NotificationTarget.SkipSSLValidation != nil {
-		skipSSLValidation = *config.NotificationTarget.SkipSSLValidation
-	}
-
-	httpClient := herottp.New(herottp.Config{
-		Timeout: requestTimeout,
-		DisableTLSCertificateVerification: skipSSLValidation,
-	})
-
+	httpClient := NewRetryHTTPClient(config, logger)
 	return &ServiceAlertsClient{config: config, httpClient: httpClient, logger: logger}
 }
 

@@ -64,7 +64,7 @@ func (c *ServiceAlertsClient) sendNotification(uaaToken string, notificationRequ
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", uaaToken))
 	req.Header.Set("Content-Type", "application/json")
 
-	_, responseErr := c.doRequestWithRetries("CF Notifications", req)
+	_, responseErr := c.httpClient.doRequestWithRetries("CF Notifications", req)
 	if responseErr != nil {
 		return responseErr
 	}
@@ -100,7 +100,7 @@ func (c *ServiceAlertsClient) obtainUAAToken(username, password, grantType strin
 		return errs(constructRequestErr)
 	}
 
-	uaaTokenResp, uaaTokenReqError := c.doRequestWithRetries("UAA", uaaTokenReq)
+	uaaTokenResp, uaaTokenReqError := c.httpClient.doRequestWithRetries("UAA", uaaTokenReq)
 	if uaaTokenReqError != nil {
 		return errs(uaaTokenReqError)
 	}
@@ -156,7 +156,7 @@ func (c *ServiceAlertsClient) sendCFApiRequest(uaaToken string, apiRequest CFApi
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", uaaToken))
 
-	apiResponse, apiRequestError := c.doRequestWithRetries("CF API", req)
+	apiResponse, apiRequestError := c.httpClient.doRequestWithRetries("CF API", req)
 	if apiRequestError != nil {
 		return nil, apiRequestError
 	}
