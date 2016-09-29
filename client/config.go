@@ -1,10 +1,10 @@
 package client
 
 type Config struct {
-	CloudController      CloudController    `yaml:"cloud_controller"`
-	NotificationTarget   NotificationTarget `yaml:"notification_target"`
-	RetryTimeoutSeconds  int                `yaml:"retry_timeout_seconds"`
-	GlobalTimeoutSeconds int                `yaml:"timeout_seconds"`
+	CloudController       CloudController    `yaml:"cloud_controller"`
+	NotificationTarget    NotificationTarget `yaml:"notification_target"`
+	RequestTimeoutSeconds int                `yaml:"request_timeout_seconds"`
+	GlobalTimeoutSeconds  int                `yaml:"timeout_seconds"`
 }
 
 type CloudController struct {

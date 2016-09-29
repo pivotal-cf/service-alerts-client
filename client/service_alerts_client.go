@@ -3,7 +3,6 @@ package client
 import (
 	"fmt"
 	"log"
-	"time"
 )
 
 type ServiceAlertsClient struct {
@@ -11,8 +10,6 @@ type ServiceAlertsClient struct {
 	httpClient *RetryHTTPClient
 	logger     *log.Logger
 }
-
-const requestTimeout = 30 * time.Second
 
 func New(config Config, logger *log.Logger) *ServiceAlertsClient {
 	httpClient := NewRetryHTTPClient(config, logger)

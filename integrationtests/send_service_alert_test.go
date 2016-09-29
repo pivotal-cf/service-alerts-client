@@ -48,7 +48,7 @@ var _ = Describe("send-service-alert executable", func() {
 		notificationServerURL           string
 		uaaURL                          string
 		cfApiURL                        string
-		retryTimeoutSeconds             int
+		requestTimeoutSeconds           int
 		globalTimeoutSeconds            int
 		cmdWaitDuration                 time.Duration
 		waitForRetriesDuration          = time.Second * 3
@@ -78,7 +78,7 @@ var _ = Describe("send-service-alert executable", func() {
 		serviceInstanceID = "some-service-instance"
 
 		cmdWaitDuration = time.Second * 3
-		retryTimeoutSeconds = 1
+		requestTimeoutSeconds = 1
 		globalTimeoutSeconds = 0
 
 		cfAuthRequestHandler = ghttp.CombineHandlers(
@@ -142,8 +142,8 @@ var _ = Describe("send-service-alert executable", func() {
 				},
 			},
 		}
-		if retryTimeoutSeconds != 0 {
-			config.RetryTimeoutSeconds = retryTimeoutSeconds
+		if requestTimeoutSeconds != 0 {
+			config.RequestTimeoutSeconds = requestTimeoutSeconds
 		}
 		if globalTimeoutSeconds != 0 {
 			config.GlobalTimeoutSeconds = globalTimeoutSeconds
@@ -376,10 +376,10 @@ var _ = Describe("send-service-alert executable", func() {
 						),
 					)
 					cmdWaitDuration = 33 * time.Second
-					retryTimeoutSeconds = 0
+					requestTimeoutSeconds = 0
 				})
 
-				It("should retry the the request up to the default retry timeout (30s)", func() {
+				It("should retry the the request up to the default request timeout (30s)", func() {
 					By("retrying the request")
 					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 6 attempts got 0")
 					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 6 attempts got 1")
@@ -412,10 +412,10 @@ var _ = Describe("send-service-alert executable", func() {
 						),
 					)
 					cmdWaitDuration = 33 * time.Second
-					retryTimeoutSeconds = 31
+					requestTimeoutSeconds = 31
 				})
 
-				It("times out the request after 30 seconds and retries", func() {
+				It("times out the request after the client timeout (30s) and retries", func() {
 					By("retrying the request")
 					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 2 attempts got 0")
 
@@ -440,7 +440,7 @@ var _ = Describe("send-service-alert executable", func() {
 						),
 					)
 					cmdWaitDuration = 2 * time.Second
-					retryTimeoutSeconds = 0
+					requestTimeoutSeconds = 0
 					globalTimeoutSeconds = 1
 				})
 
@@ -462,7 +462,7 @@ var _ = Describe("send-service-alert executable", func() {
 						),
 					)
 					cmdWaitDuration = 61 * time.Second
-					retryTimeoutSeconds = 65
+					requestTimeoutSeconds = 65
 				})
 
 				It("should time out", func() {
