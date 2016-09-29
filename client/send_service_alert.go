@@ -14,9 +14,12 @@ import (
 	"time"
 )
 
-const globalTimeout = 60 * time.Second
-
 func (c *ServiceAlertsClient) SendServiceAlert(product, subject, serviceInstanceID, content string) error {
+	globalTimeout := 60 * time.Second
+	if c.config.GlobalTimeoutSeconds != 0 {
+		globalTimeout = time.Duration(c.config.GlobalTimeoutSeconds) * time.Second
+	}
+
 	errChan := make(chan error)
 	go c.sendServiceAlert(product, subject, serviceInstanceID, content, errChan)
 	select {

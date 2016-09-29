@@ -49,6 +49,7 @@ var _ = Describe("send-service-alert executable", func() {
 		uaaURL                          string
 		cfApiURL                        string
 		retryTimeoutSeconds             int
+		globalTimeoutSeconds            int
 		cmdWaitDuration                 time.Duration
 		waitForRetriesDuration          = time.Second * 3
 	)
@@ -78,6 +79,7 @@ var _ = Describe("send-service-alert executable", func() {
 
 		cmdWaitDuration = time.Second * 3
 		retryTimeoutSeconds = 1
+		globalTimeoutSeconds = 0
 
 		cfAuthRequestHandler = ghttp.CombineHandlers(
 			ghttp.VerifyRequest("POST", "/oauth/token", ""),
@@ -142,6 +144,9 @@ var _ = Describe("send-service-alert executable", func() {
 		}
 		if retryTimeoutSeconds != 0 {
 			config.RetryTimeoutSeconds = retryTimeoutSeconds
+		}
+		if globalTimeoutSeconds != 0 {
+			config.GlobalTimeoutSeconds = globalTimeoutSeconds
 		}
 		configBytes, err := yaml.Marshal(config)
 		Expect(err).NotTo(HaveOccurred())
@@ -445,6 +450,49 @@ var _ = Describe("send-service-alert executable", func() {
 
 					By("Logging a user error message to stderr")
 					Expect(stderr).To(gbytes.Say("Giving up, CF Notifications request failed"))
+					Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
+
+					By("exiting with code 2")
+					Expect(runningBin.ExitCode()).To(Equal(2))
+				})
+			})
+
+			Context("when the request to the notifications service has not succeeded before the configured global timeout", func() {
+				BeforeEach(func() {
+					notificationServer.AppendHandlers(
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGUIDFromCF)),
+							ghttp.RespondWith(http.StatusInternalServerError, "something went wrong", http.Header{}),
+						),
+					)
+					cmdWaitDuration = 2 * time.Second
+					retryTimeoutSeconds = 0
+					globalTimeoutSeconds = 1
+				})
+
+				It("should time out", func() {
+					By("Logging a user error message to stderr")
+					Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
+
+					By("exiting with code 2")
+					Expect(runningBin.ExitCode()).To(Equal(2))
+				})
+			})
+
+			Context("when the request to the notifications service has not succeeed before the default global timeout (60s)", func() {
+				BeforeEach(func() {
+					notificationServer.AppendHandlers(
+						ghttp.CombineHandlers(
+							ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGUIDFromCF)),
+							ghttp.RespondWith(http.StatusInternalServerError, "something went wrong", http.Header{}),
+						),
+					)
+					cmdWaitDuration = 61 * time.Second
+					retryTimeoutSeconds = 65
+				})
+
+				It("should time out", func() {
+					By("Logging a user error message to stderr")
 					Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
 
 					By("exiting with code 2")

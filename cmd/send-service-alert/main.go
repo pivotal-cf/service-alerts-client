@@ -27,6 +27,7 @@ func main() {
 
 	logFlags := log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC
 	logger := log.New(os.Stderr, "[service alerts client] ", logFlags)
+	logger.Println("starting now...")
 
 	alertsClient := client.New(config, logger)
 	clientErr := alertsClient.SendServiceAlert(*product, *subject, *serviceInstanceID, *content)
