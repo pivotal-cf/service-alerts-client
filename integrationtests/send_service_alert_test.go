@@ -366,32 +366,6 @@ var _ = Describe("send-service-alert executable", func() {
 			})
 		})
 
-		Context("when retry_timeout_seconds is not configured", func() {
-			BeforeEach(func() {
-				notificationServer.AppendHandlers(
-					ghttp.CombineHandlers(
-						ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGUIDFromCF)),
-						ghttp.VerifyHeader(http.Header{
-							"X-NOTIFICATIONS-VERSION": {"1"},
-							"Authorization":           {fmt.Sprintf("Bearer %s", notificationsToken)},
-						}),
-						captureActualRequest,
-					),
-				)
-				retryTimeoutSeconds = 0
-			})
-
-			It("exits with 0", func() {
-				Expect(runningBin.ExitCode()).To(Equal(0))
-			})
-
-			It("does not require retry_timeout_seconds in the config file", func() {
-				configBytes, err := ioutil.ReadFile(configFilePath)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(configBytes).NotTo(ContainSubstring("retry_timeout_seconds"))
-			})
-		})
-
 		Describe("CF Notifications service failures", func() {
 			Context("when the notifications service returns HTTP 500", func() {
 				BeforeEach(func() {
@@ -405,7 +379,7 @@ var _ = Describe("send-service-alert executable", func() {
 					retryTimeoutSeconds = 0
 				})
 
-				It("should retry the the request up to the time limit", func() {
+				It("should retry the the request up to the default retry timeout (30s)", func() {
 					By("retrying the request")
 					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 6 attempts got 0")
 					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 6 attempts got 1")

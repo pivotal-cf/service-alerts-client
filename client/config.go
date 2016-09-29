@@ -3,7 +3,7 @@ package client
 type Config struct {
 	CloudController      CloudController    `yaml:"cloud_controller"`
 	NotificationTarget   NotificationTarget `yaml:"notification_target"`
-	RetryTimeoutSeconds  int                `yaml:"retry_timeout_seconds,omitempty"`
+	RetryTimeoutSeconds  int                `yaml:"retry_timeout_seconds"`
 	GlobalTimeoutSeconds int                `yaml:"timeout_seconds"`
 }
 
