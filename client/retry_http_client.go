@@ -11,10 +11,7 @@ import (
 	"github.com/craigfurman/herottp"
 )
 
-const (
-	defaultRequestTimeout = 30 * time.Second
-	httpClientTimeout     = 30 * time.Second
-)
+const httpClientTimeout = 30 * time.Second
 
 type RetryHTTPClient struct {
 	config     Config
@@ -80,16 +77,16 @@ func (r *RetryHTTPClient) buildRetryLogging(label string) func(err error, next t
 func (r *RetryHTTPClient) buildExponentialBackoff() *backoff.ExponentialBackOff {
 	exponentialBackoff := backoff.NewExponentialBackOff()
 
-	requestTimeout := defaultRequestTimeout
-	if r.config.RequestTimeoutSeconds != 0 {
-		requestTimeout = time.Duration(r.config.RequestTimeoutSeconds) * time.Second
+	maxElapsedTime := defaultGlobalTimeout
+	if r.config.GlobalTimeoutSeconds != 0 {
+		maxElapsedTime = time.Duration(r.config.GlobalTimeoutSeconds) * time.Second
 	}
 
 	exponentialBackoff.InitialInterval = 1 * time.Second
 	exponentialBackoff.RandomizationFactor = 0
 	exponentialBackoff.Multiplier = 2
 	exponentialBackoff.MaxInterval = 16 * time.Second
-	exponentialBackoff.MaxElapsedTime = requestTimeout
+	exponentialBackoff.MaxElapsedTime = maxElapsedTime
 
 	return exponentialBackoff
 }

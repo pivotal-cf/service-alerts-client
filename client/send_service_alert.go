@@ -14,8 +14,10 @@ import (
 	"time"
 )
 
+const defaultGlobalTimeout = 60 * time.Second
+
 func (c *ServiceAlertsClient) SendServiceAlert(product, subject, serviceInstanceID, content string) error {
-	globalTimeout := 60 * time.Second
+	globalTimeout := defaultGlobalTimeout
 	if c.config.GlobalTimeoutSeconds != 0 {
 		globalTimeout = time.Duration(c.config.GlobalTimeoutSeconds) * time.Second
 	}
