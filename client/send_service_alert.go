@@ -92,7 +92,7 @@ func (c *ServiceAlertsClient) createNotification(product, subject, serviceInstan
 }
 
 func (c *ServiceAlertsClient) obtainNotificationsClientToken() (string, error) {
-	return c.obtainUAAToken(c.config.NotificationTarget.Authentication.UAA.ClientID, c.config.NotificationTarget.Authentication.UAA.ClientSecret, "client_credentials")
+	return c.obtainUAAToken(c.config.NotificationTarget.ClientID, c.config.NotificationTarget.ClientSecret, "client_credentials")
 }
 
 func (c *ServiceAlertsClient) obtainCFUserToken() (string, error) {
@@ -120,7 +120,7 @@ func (c *ServiceAlertsClient) obtainUAAToken(username, password, grantType strin
 }
 
 func (c *ServiceAlertsClient) constructRequestForGrantType(username, password, grantType string) (*http.Request, error) {
-	uaaURL, err := joinURL(c.config.NotificationTarget.Authentication.UAA.URL, "/oauth/token", "")
+	uaaURL, err := joinURL(c.config.NotificationTarget.UaaURL, "/oauth/token", "")
 	if err != nil {
 		return nil, err
 	}

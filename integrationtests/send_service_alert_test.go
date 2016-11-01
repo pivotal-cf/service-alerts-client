@@ -127,17 +127,13 @@ var _ = Describe("send-service-alert executable", func() {
 				Password: cfApiPassword,
 			},
 			NotificationTarget: client.NotificationTarget{
-				URL:     notificationServerURL,
-				CFOrg:   cfOrgName,
-				CFSpace: cfSpaceName,
-				ReplyTo: replyTo,
-				Authentication: client.Authentication{
-					UAA: client.UAA{
-						URL:          uaaURL,
-						ClientID:     uaaClientID,
-						ClientSecret: uaaClientSecret,
-					},
-				},
+				URL:          notificationServerURL,
+				CFOrg:        cfOrgName,
+				CFSpace:      cfSpaceName,
+				ReplyTo:      replyTo,
+				UaaURL:       uaaURL,
+				ClientID:     uaaClientID,
+				ClientSecret: uaaClientSecret,
 			},
 		}
 		if globalTimeoutSeconds != 0 {

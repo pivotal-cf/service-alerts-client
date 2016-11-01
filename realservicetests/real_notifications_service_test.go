@@ -86,13 +86,9 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 				CFOrg:             cfOrg,
 				CFSpace:           cfSpace,
 				ReplyTo:           replyTo,
-				Authentication: client.Authentication{
-					UAA: client.UAA{
-						URL:          envMustHave("UAA_URL"),
-						ClientID:     envMustHave("NOTIFICATIONS_CLIENT_ID"),
-						ClientSecret: envMustHave("NOTIFICATIONS_CLIENT_SECRET"),
-					},
-				},
+				UaaURL:            envMustHave("UAA_URL"),
+				ClientID:          envMustHave("NOTIFICATIONS_CLIENT_ID"),
+				ClientSecret:      envMustHave("NOTIFICATIONS_CLIENT_SECRET"),
 			},
 		}
 		configBytes, err := yaml.Marshal(config)

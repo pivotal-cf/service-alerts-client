@@ -13,20 +13,12 @@ type CloudController struct {
 }
 
 type NotificationTarget struct {
-	URL               string         `yaml:"url"`
-	SkipSSLValidation *bool          `yaml:"skip_ssl_validation"`
-	CFOrg             string         `yaml:"cf_org"`
-	CFSpace           string         `yaml:"cf_space"`
-	ReplyTo           string         `yaml:"reply_to"`
-	Authentication    Authentication `yaml:"authentication"`
-}
-
-type Authentication struct {
-	UAA UAA `yaml:"uaa"`
-}
-
-type UAA struct {
-	URL          string `yaml:"url"`
-	ClientID     string `yaml:"client_id"`
-	ClientSecret string `yaml:"client_secret"`
+	URL               string `yaml:"url"`
+	SkipSSLValidation *bool  `yaml:"skip_ssl_validation"`
+	CFOrg             string `yaml:"cf_org"`
+	CFSpace           string `yaml:"cf_space"`
+	ReplyTo           string `yaml:"reply_to"`
+	UaaURL            string `yaml:"uaa_url"`
+	ClientID          string `yaml:"client_id"`
+	ClientSecret      string `yaml:"client_secret"`
 }
