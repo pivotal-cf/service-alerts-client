@@ -16,28 +16,21 @@ var (
 		Password: "<PASSWORD>",
 	}
 
-	auth = client.Authentication{
-		UAA: client.UAA{
-			URL:          "https://uaa.<CF_DOMAIN>",
-			ClientID:     "<CLIENTID>",
-			ClientSecret: "<CLIENT_SECRET>",
-		},
-	}
-
-	notificationTarget = client.NotificationTarget{
-		URL:               "https://notifications.<CF_DOMAIN>",
+	Notifications = client.Notifications{
+		ServiceURL:        "https://notifications.<CF_DOMAIN>",
 		CFOrg:             "<ORG>",
 		CFSpace:           "<SPACE>", // Org and space where the cf-notifications service is running
 		SkipSSLValidation: &skipSSL,
-		Authentication:    auth,
+		ClientID:          "<CLIENTID>",
+		ClientSecret:      "<CLIENT_SECRET>",
 	}
 )
 
 func main() {
 
 	config := client.Config{
-		CloudController:    cloudController,
-		NotificationTarget: notificationTarget,
+		CloudController: cloudController,
+		Notifications:   Notifications,
 	}
 
 	logFlags := log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC
@@ -48,6 +41,6 @@ func main() {
 		logger.Fatalf("Failed to do anything at all :( ... %s/n", err)
 	}
 
-	logger.Printf("Successfully posted notification to CF notification service for org: %s, space: %s", config.NotificationTarget.CFOrg, config.NotificationTarget.CFSpace)
+	logger.Printf("Successfully posted notification to CF notification service for org: %s, space: %s", config.Notifications.CFOrg, config.Notifications.CFSpace)
 
 }

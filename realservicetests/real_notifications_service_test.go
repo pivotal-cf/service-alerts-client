@@ -80,13 +80,12 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 				User:     auditorUsername,
 				Password: auditorPassword,
 			},
-			NotificationTarget: client.NotificationTarget{
-				URL:               envMustHave("NOTIFICATIONS_SERVICE_URL"),
+			Notifications: client.Notifications{
+				ServiceURL:        envMustHave("NOTIFICATIONS_SERVICE_URL"),
 				SkipSSLValidation: pointerTo(true),
 				CFOrg:             cfOrg,
 				CFSpace:           cfSpace,
 				ReplyTo:           replyTo,
-				UaaURL:            envMustHave("UAA_URL"),
 				ClientID:          envMustHave("NOTIFICATIONS_CLIENT_ID"),
 				ClientSecret:      envMustHave("NOTIFICATIONS_CLIENT_SECRET"),
 			},

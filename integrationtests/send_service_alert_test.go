@@ -26,6 +26,7 @@ var _ = Describe("send-service-alert executable", func() {
 		uaaServer                       *ghttp.Server
 		cfServer                        *ghttp.Server
 		cfAuthRequestHandler            http.HandlerFunc
+		cfInfoRequestHandler            http.HandlerFunc
 		notificationsAuthRequestHandler http.HandlerFunc
 		runningBin                      *gexec.Session
 		stderr                          *gbytes.Buffer
@@ -94,6 +95,13 @@ var _ = Describe("send-service-alert executable", func() {
 			}, http.Header{}),
 		)
 
+		cfInfoRequestHandler = ghttp.CombineHandlers(
+			ghttp.VerifyRequest("GET", "/v2/info"),
+			ghttp.RespondWithJSONEncoded(http.StatusOK, map[string]interface{}{
+				"token_endpoint": uaaURL,
+			}, http.Header{}),
+		)
+
 		notificationsAuthRequestHandler = ghttp.CombineHandlers(
 			ghttp.VerifyRequest("POST", "/oauth/token", ""),
 			ghttp.VerifyBasicAuth(uaaClientID, uaaClientSecret),
@@ -126,12 +134,11 @@ var _ = Describe("send-service-alert executable", func() {
 				User:     cfApiUsername,
 				Password: cfApiPassword,
 			},
-			NotificationTarget: client.NotificationTarget{
-				URL:          notificationServerURL,
+			Notifications: client.Notifications{
+				ServiceURL:   notificationServerURL,
 				CFOrg:        cfOrgName,
 				CFSpace:      cfSpaceName,
 				ReplyTo:      replyTo,
-				UaaURL:       uaaURL,
 				ClientID:     uaaClientID,
 				ClientSecret: uaaClientSecret,
 			},
@@ -216,6 +223,7 @@ var _ = Describe("send-service-alert executable", func() {
 
 	Context("when the UAA server returns a success response and a token for the CF API user", func() {
 		BeforeEach(func() {
+			cfServer.AppendHandlers(cfInfoRequestHandler)
 			uaaServer.AppendHandlers(cfAuthRequestHandler, notificationsAuthRequestHandler)
 
 			notificationServer.AppendHandlers(ghttp.CombineHandlers(
@@ -232,8 +240,7 @@ var _ = Describe("send-service-alert executable", func() {
 			BeforeEach(func() {
 				cfServer.AppendHandlers(
 					orgQueryHandler("fixtures/cf_orgs_response.json"),
-					spaceQueryHandler("fixtures/cf_org_spaces_response.json"),
-				)
+					spaceQueryHandler("fixtures/cf_org_spaces_response.json"))
 			})
 
 			It("exits with 0", func() {
@@ -245,7 +252,7 @@ var _ = Describe("send-service-alert executable", func() {
 			})
 
 			It("calls the CF API to list orgs and spaces", func() {
-				Expect(cfServer.ReceivedRequests()).To(HaveLen(2))
+				Expect(cfServer.ReceivedRequests()).To(HaveLen(3))
 			})
 		})
 	})
@@ -254,6 +261,7 @@ var _ = Describe("send-service-alert executable", func() {
 		BeforeEach(func() {
 			uaaServer.AppendHandlers(cfAuthRequestHandler, notificationsAuthRequestHandler)
 			cfServer.AppendHandlers(
+				cfInfoRequestHandler,
 				orgQueryHandler("fixtures/cf_orgs_response.json"),
 				spaceQueryHandler("fixtures/cf_org_spaces_response.json"),
 			)
@@ -559,6 +567,10 @@ var _ = Describe("send-service-alert executable", func() {
 	})
 
 	Describe("UAA failures", func() {
+		BeforeEach(func() {
+			cfServer.AppendHandlers(cfInfoRequestHandler)
+		})
+
 		Context("uaa server returns 500", func() {
 			BeforeEach(func() {
 				uaaServer.AppendHandlers(ghttp.CombineHandlers(
@@ -692,6 +704,7 @@ var _ = Describe("send-service-alert executable", func() {
 		Context("CF API return 403 Forbidden", func() {
 			BeforeEach(func() {
 				cfServer.AppendHandlers(
+					cfInfoRequestHandler,
 					orgQueryHandler("fixtures/cf_orgs_response.json"),
 					spaceQueryForbidden(),
 				)
@@ -712,6 +725,7 @@ var _ = Describe("send-service-alert executable", func() {
 
 		Context("CF API returns 500", func() {
 			BeforeEach(func() {
+				cfServer.AppendHandlers(cfInfoRequestHandler)
 				handlers := []http.HandlerFunc{}
 				// allow 6 retries
 				for i := 0; i < 6; i++ {
@@ -733,9 +747,31 @@ var _ = Describe("send-service-alert executable", func() {
 			})
 		})
 
+		Context("CF info API returns an unparseable response", func() {
+			BeforeEach(func() {
+				cfServer.AppendHandlers(
+					ghttp.CombineHandlers(
+						ghttp.VerifyRequest("GET", "/v2/info"),
+						ghttp.RespondWithJSONEncoded(http.StatusOK, "this is not json at all", http.Header{}),
+					),
+				)
+			})
+
+			It("exits with 1", func() {
+				Expect(runningBin.ExitCode()).To(Equal(1))
+			})
+
+			It("logs an error", func() {
+				Expect(stderr).To(gbytes.Say("CF response not parseable:"))
+			})
+		})
+
 		Context("the organization does not exist", func() {
 			BeforeEach(func() {
-				cfServer.AppendHandlers(orgQueryHandler("fixtures/cf_no_matches_response.json"))
+				cfServer.AppendHandlers(
+					cfInfoRequestHandler,
+					orgQueryHandler("fixtures/cf_no_matches_response.json"),
+				)
 			})
 
 			It("exits with 1", func() {
@@ -749,7 +785,10 @@ var _ = Describe("send-service-alert executable", func() {
 
 		Context("the organization response is unparseable", func() {
 			BeforeEach(func() {
-				cfServer.AppendHandlers(orgQueryHandler("fixtures/cf_unparseable_response.json"))
+				cfServer.AppendHandlers(
+					cfInfoRequestHandler,
+					orgQueryHandler("fixtures/cf_unparseable_response.json"),
+				)
 			})
 
 			It("exits with 1", func() {
@@ -764,6 +803,7 @@ var _ = Describe("send-service-alert executable", func() {
 		Context("the space does not exist", func() {
 			BeforeEach(func() {
 				cfServer.AppendHandlers(
+					cfInfoRequestHandler,
 					orgQueryHandler("fixtures/cf_orgs_response.json"),
 					spaceQueryHandler("fixtures/cf_no_matches_response.json"),
 				)
@@ -781,6 +821,7 @@ var _ = Describe("send-service-alert executable", func() {
 		Context("the space response is unparseable", func() {
 			BeforeEach(func() {
 				cfServer.AppendHandlers(
+					cfInfoRequestHandler,
 					orgQueryHandler("fixtures/cf_orgs_response.json"),
 					spaceQueryHandler("fixtures/cf_unparseable_response.json"),
 				)

@@ -32,3 +32,7 @@ type SpaceNotificationRequest struct {
 type UAATokenResponse struct {
 	Token string `json:"access_token"`
 }
+
+type CFInfoResponse struct {
+	UAAUrl string `json:"token_endpoint"`
+}

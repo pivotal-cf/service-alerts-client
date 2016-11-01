@@ -21,8 +21,8 @@ type RetryHTTPClient struct {
 
 func NewRetryHTTPClient(config Config, logger *log.Logger) *RetryHTTPClient {
 	skipSSLValidation := false
-	if config.NotificationTarget.SkipSSLValidation != nil {
-		skipSSLValidation = *config.NotificationTarget.SkipSSLValidation
+	if config.Notifications.SkipSSLValidation != nil {
+		skipSSLValidation = *config.Notifications.SkipSSLValidation
 	}
 
 	httpClient := herottp.New(herottp.Config{

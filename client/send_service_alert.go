@@ -17,6 +17,10 @@ import (
 const defaultGlobalTimeout = 60 * time.Second
 
 func (c *ServiceAlertsClient) SendServiceAlert(product, subject, serviceInstanceID, content string) error {
+	if err := c.setupUaaUrl(); err != nil {
+		return err
+	}
+
 	globalTimeout := defaultGlobalTimeout
 	if c.config.GlobalTimeoutSeconds != 0 {
 		globalTimeout = time.Duration(c.config.GlobalTimeoutSeconds) * time.Second
@@ -30,6 +34,43 @@ func (c *ServiceAlertsClient) SendServiceAlert(product, subject, serviceInstance
 	case <-time.After(globalTimeout):
 		return HTTPRequestError{error: errors.New("sending service alert timed out"), config: c.config}
 	}
+}
+
+func (c *ServiceAlertsClient) setupUaaUrl() error {
+	if c.uaaUrl == "" {
+		uaaUrl, err := c.getUaaUrl()
+		if err != nil {
+			return err
+		}
+		c.uaaUrl = uaaUrl
+	}
+	return nil
+}
+
+func (c *ServiceAlertsClient) getUaaUrl() (string, error) {
+	ccInfoUrl, err := joinURL(c.config.CloudController.URL, "/v2/info", "")
+	if err != nil {
+		return errs(err)
+	}
+
+	cfInfoRequest, err := http.NewRequest("GET", ccInfoUrl, nil)
+	if err != nil {
+		return errs(err)
+	}
+
+	infoResponse, err := c.httpClient.doRequestWithRetries("CF INFO", cfInfoRequest)
+	if err != nil {
+		return errs(err)
+	}
+
+	defer infoResponse.Body.Close()
+
+	var infoResponseBody CFInfoResponse
+	if unmarshalBodyError := json.NewDecoder(infoResponse.Body).Decode(&infoResponseBody); unmarshalBodyError != nil {
+		return errs(fmt.Errorf("CF response not parseable: %s", unmarshalBodyError.Error()))
+	}
+
+	return infoResponseBody.UAAUrl, nil
 }
 
 func (c *ServiceAlertsClient) sendServiceAlert(product, subject, serviceInstanceID, content string, errChan chan<- error) {
@@ -59,7 +100,7 @@ func (c *ServiceAlertsClient) sendNotification(uaaToken string, notificationRequ
 		return err
 	}
 
-	sendNotificationRequestURL, err := joinURL(c.config.NotificationTarget.URL, fmt.Sprintf("/spaces/%s", spaceGUID), "")
+	sendNotificationRequestURL, err := joinURL(c.config.Notifications.ServiceURL, fmt.Sprintf("/spaces/%s", spaceGUID), "")
 	req, err := http.NewRequest("POST", sendNotificationRequestURL, bytes.NewReader(reqBytes))
 	if err != nil {
 		return err
@@ -87,12 +128,12 @@ func (c *ServiceAlertsClient) createNotification(product, subject, serviceInstan
 		KindID:  DummyKindID,
 		Subject: fmt.Sprintf("[Service Alert][%s] %s", product, subject),
 		Text:    textBody,
-		ReplyTo: c.config.NotificationTarget.ReplyTo,
+		ReplyTo: c.config.Notifications.ReplyTo,
 	}, nil
 }
 
 func (c *ServiceAlertsClient) obtainNotificationsClientToken() (string, error) {
-	return c.obtainUAAToken(c.config.NotificationTarget.ClientID, c.config.NotificationTarget.ClientSecret, "client_credentials")
+	return c.obtainUAAToken(c.config.Notifications.ClientID, c.config.Notifications.ClientSecret, "client_credentials")
 }
 
 func (c *ServiceAlertsClient) obtainCFUserToken() (string, error) {
@@ -120,7 +161,7 @@ func (c *ServiceAlertsClient) obtainUAAToken(username, password, grantType strin
 }
 
 func (c *ServiceAlertsClient) constructRequestForGrantType(username, password, grantType string) (*http.Request, error) {
-	uaaURL, err := joinURL(c.config.NotificationTarget.UaaURL, "/oauth/token", "")
+	uaaURL, err := joinURL(c.uaaUrl, "/oauth/token", "")
 	if err != nil {
 		return nil, err
 	}
@@ -178,13 +219,13 @@ func (c *ServiceAlertsClient) obtainSpaceGUID() (string, error) {
 	getOrganisationRequest := c.createOrgQueryRequest()
 	orgGUID, err := c.obtainGUIDUsingRequest(cfUserToken, getOrganisationRequest)
 	if err != nil {
-		return errs(formattedCFError("org", c.config.NotificationTarget.CFOrg, err))
+		return errs(formattedCFError("org", c.config.Notifications.CFOrg, err))
 	}
 
 	getSpaceRequest := c.createSpaceQueryRequest(orgGUID)
 	spaceGUID, err := c.obtainGUIDUsingRequest(cfUserToken, getSpaceRequest)
 	if err != nil {
-		return errs(formattedCFError("space", c.config.NotificationTarget.CFSpace, err))
+		return errs(formattedCFError("space", c.config.Notifications.CFSpace, err))
 	}
 
 	return spaceGUID, nil
@@ -193,7 +234,7 @@ func (c *ServiceAlertsClient) obtainSpaceGUID() (string, error) {
 func (c *ServiceAlertsClient) createOrgQueryRequest() CFApiRequest {
 	orgQueryRequest := CFApiRequest{
 		Path:   "/v2/organizations",
-		Filter: fmt.Sprintf("name:%s", c.config.NotificationTarget.CFOrg),
+		Filter: fmt.Sprintf("name:%s", c.config.Notifications.CFOrg),
 	}
 	return orgQueryRequest
 }
@@ -201,7 +242,7 @@ func (c *ServiceAlertsClient) createOrgQueryRequest() CFApiRequest {
 func (c *ServiceAlertsClient) createSpaceQueryRequest(orgGUID string) CFApiRequest {
 	spaceQueryRequest := CFApiRequest{
 		Path:   fmt.Sprintf("/v2/organizations/%s/spaces", orgGUID),
-		Filter: fmt.Sprintf("name:%s", c.config.NotificationTarget.CFSpace),
+		Filter: fmt.Sprintf("name:%s", c.config.Notifications.CFSpace),
 	}
 	return spaceQueryRequest
 }
@@ -209,12 +250,12 @@ func (c *ServiceAlertsClient) createSpaceQueryRequest(orgGUID string) CFApiReque
 func (c *ServiceAlertsClient) obtainGUIDUsingRequest(token string, request CFApiRequest) (string, error) {
 	response, err := c.sendCFApiRequest(token, request)
 	if err != nil {
-		return "", err
+		return errs(err)
 	}
 
 	resource, err := unmarshalCFResponse(response.Body)
 	if err != nil {
-		return "", err
+		return errs(err)
 	}
 
 	if resource.TotalResults == 0 {
@@ -249,7 +290,7 @@ type CFResourceNotFound struct {
 func joinURL(base, urlPath, filter string) (string, error) {
 	u, err := url.Parse(base)
 	if err != nil {
-		return "", err
+		return errs(err)
 	}
 	u.Path = path.Join(u.Path, urlPath)
 	if filter != "" {
