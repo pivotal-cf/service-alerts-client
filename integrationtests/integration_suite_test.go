@@ -24,3 +24,7 @@ func TestIntegration(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Integration Suite")
 }
+
+func makeBool(value bool) *bool {
+	return &value
+}

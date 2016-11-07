@@ -17,20 +17,20 @@ var (
 	}
 
 	Notifications = client.Notifications{
-		ServiceURL:        "https://notifications.<CF_DOMAIN>",
-		CFOrg:             "<ORG>",
-		CFSpace:           "<SPACE>", // Org and space where the cf-notifications service is running
-		SkipSSLValidation: &skipSSL,
-		ClientID:          "<CLIENTID>",
-		ClientSecret:      "<CLIENT_SECRET>",
+		ServiceURL:   "https://notifications.<CF_DOMAIN>",
+		CFOrg:        "<ORG>",
+		CFSpace:      "<SPACE>", // Org and space where the cf-notifications service is running
+		ClientID:     "<CLIENTID>",
+		ClientSecret: "<CLIENT_SECRET>",
 	}
 )
 
 func main() {
 
 	config := client.Config{
-		CloudController: cloudController,
-		Notifications:   Notifications,
+		CloudController:   cloudController,
+		Notifications:     Notifications,
+		SkipSSLValidation: &skipSSL,
 	}
 
 	logFlags := log.Ldate | log.Ltime | log.Lmicroseconds | log.LUTC

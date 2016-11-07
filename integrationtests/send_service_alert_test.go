@@ -52,12 +52,15 @@ var _ = Describe("send-service-alert executable", func() {
 		globalTimeoutSeconds            int
 		cmdWaitDuration                 time.Duration
 		waitForRetriesDuration          = time.Second * 3
+		config                          client.Config
+		skipSSLValidation               = makeBool(true)
 	)
 
 	BeforeEach(func() {
-		notificationServer = ghttp.NewServer()
-		uaaServer = ghttp.NewServer()
-		cfServer = ghttp.NewServer()
+		notificationServer = ghttp.NewTLSServer()
+		uaaServer = ghttp.NewTLSServer()
+		cfServer = ghttp.NewTLSServer()
+		skipSSLValidation = makeBool(true)
 
 		notificationServerURL = "notification server not running"
 		if notificationServer.HTTPTestServer != nil {
@@ -128,7 +131,7 @@ var _ = Describe("send-service-alert executable", func() {
 		Expect(err).NotTo(HaveOccurred())
 		defer configFile.Close()
 		configFilePath = configFile.Name()
-		config := client.Config{
+		config = client.Config{
 			CloudController: client.CloudController{
 				URL:      cfApiURL,
 				User:     cfApiUsername,
@@ -142,6 +145,7 @@ var _ = Describe("send-service-alert executable", func() {
 				ClientID:     uaaClientID,
 				ClientSecret: uaaClientSecret,
 			},
+			SkipSSLValidation: skipSSLValidation,
 		}
 		if globalTimeoutSeconds != 0 {
 			config.GlobalTimeoutSeconds = globalTimeoutSeconds
@@ -253,6 +257,33 @@ var _ = Describe("send-service-alert executable", func() {
 
 			It("calls the CF API to list orgs and spaces", func() {
 				Expect(cfServer.ReceivedRequests()).To(HaveLen(3))
+			})
+		})
+
+		Context("when SkipSSLValidation set to false", func() {
+			BeforeEach(func() {
+				cfServer.AppendHandlers(
+					orgQueryHandler("fixtures/cf_orgs_response.json"),
+					spaceQueryHandler("fixtures/cf_org_spaces_response.json"))
+			})
+			Context("when explicitly set", func() {
+				BeforeEach(func() {
+					skipSSLValidation = makeBool(false)
+				})
+
+				It("exits with 2", func() {
+					Expect(runningBin.ExitCode()).To(Equal(2))
+				})
+			})
+
+			Context("Implicitly", func() {
+				BeforeEach(func() {
+					skipSSLValidation = nil
+				})
+
+				It("exits with 2", func() {
+					Expect(runningBin.ExitCode()).To(Equal(2))
+				})
 			})
 		})
 	})

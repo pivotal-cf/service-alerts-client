@@ -81,14 +81,14 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 				Password: auditorPassword,
 			},
 			Notifications: client.Notifications{
-				ServiceURL:        envMustHave("NOTIFICATIONS_SERVICE_URL"),
-				SkipSSLValidation: pointerTo(true),
-				CFOrg:             cfOrg,
-				CFSpace:           cfSpace,
-				ReplyTo:           replyTo,
-				ClientID:          envMustHave("NOTIFICATIONS_CLIENT_ID"),
-				ClientSecret:      envMustHave("NOTIFICATIONS_CLIENT_SECRET"),
+				ServiceURL:   envMustHave("NOTIFICATIONS_SERVICE_URL"),
+				CFOrg:        cfOrg,
+				CFSpace:      cfSpace,
+				ReplyTo:      replyTo,
+				ClientID:     envMustHave("NOTIFICATIONS_CLIENT_ID"),
+				ClientSecret: envMustHave("NOTIFICATIONS_CLIENT_SECRET"),
 			},
+			SkipSSLValidation: pointerTo(true),
 		}
 		configBytes, err := yaml.Marshal(config)
 		Expect(err).NotTo(HaveOccurred())
