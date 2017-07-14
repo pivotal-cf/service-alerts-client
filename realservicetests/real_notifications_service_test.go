@@ -131,7 +131,7 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 		)
 		runningBin, err := gexec.Start(cmd, GinkgoWriter, GinkgoWriter)
 		Expect(err).NotTo(HaveOccurred())
-		Eventually(runningBin, time.Second*3).Should(gexec.Exit(0))
+		Eventually(runningBin, time.Second*15).Should(gexec.Exit(0))
 
 		var emailContent Content
 		Eventually(func() bool {
