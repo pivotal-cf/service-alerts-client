@@ -481,12 +481,9 @@ var _ = Describe("send-service-alert executable", func() {
 
 			Context("when the request to the notifications service has not succeeed before the default global timeout (60s)", func() {
 				BeforeEach(func() {
-					notificationServer.AppendHandlers(
-						ghttp.CombineHandlers(
-							ghttp.VerifyRequest("POST", fmt.Sprintf("/spaces/%s", spaceGUIDFromCF)),
-							ghttp.RespondWith(http.StatusInternalServerError, "something went wrong", http.Header{}),
-						),
-					)
+					notificationServer.AllowUnhandledRequests = true
+					notificationServer.UnhandledRequestStatusCode = http.StatusInternalServerError
+
 					cmdWaitDuration = 61 * time.Second
 					globalTimeoutSeconds = 0
 				})
