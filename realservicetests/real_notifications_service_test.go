@@ -149,7 +149,7 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 			}
 
 			return false
-		}, time.Second*10).Should(BeTrue())
+		}, time.Minute*10).Should(BeTrue())
 
 		Expect(emailContent.Headers.ReplyTo).To(ConsistOf(replyTo))
 		Expect(emailContent.Headers.To).To(ConsistOf(devUserEmail))
