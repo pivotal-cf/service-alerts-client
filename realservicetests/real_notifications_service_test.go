@@ -64,8 +64,8 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 		cfAPI := envMustHave("CF_API")
 		cfAdminUsername := envMustHave("CF_ADMIN_USERNAME")
 		cfAdminPassword := envMustHave("CF_ADMIN_PASSWORD")
-		cfOrg = "test-" + uuid.New()
-		cfSpace := "test-" + uuid.New()
+		cfOrg = "test-notification"
+		cfSpace := "test-notification"
 		Eventually(cf.Cf("api", cfAPI, "--skip-ssl-validation"), cfTimeout).Should(gexec.Exit(0))
 		Eventually(cf.CfAuth(cfAdminUsername, cfAdminPassword), cfTimeout).Should(gexec.Exit(0))
 		Eventually(cf.Cf("create-org", cfOrg), cfTimeout).Should(gexec.Exit(0))
@@ -103,21 +103,21 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 	})
 
 	AfterEach(func() {
-		req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/api/v1/messages", mailhogURL), nil)
-		Expect(err).NotTo(HaveOccurred())
-		resp, err := http.DefaultClient.Do(req)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(resp.StatusCode).To(Equal(http.StatusOK))
-
-		Eventually(cf.Cf("delete-org", cfOrg, "-f"), cfTimeout).Should(gexec.Exit(0))
-		Eventually(cf.Cf("delete-user", devUserEmail, "-f"), cfTimeout).Should(gexec.Exit(0))
-		Eventually(cf.Cf("delete-user", auditorUsername, "-f"), cfTimeout).Should(gexec.Exit(0))
-		Expect(os.Remove(configFilePath)).To(Succeed())
+		//req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/api/v1/messages", mailhogURL), nil)
+		//Expect(err).NotTo(HaveOccurred())
+		//resp, err := http.DefaultClient.Do(req)
+		//Expect(err).NotTo(HaveOccurred())
+		//Expect(resp.StatusCode).To(Equal(http.StatusOK))
+		//
+		//Eventually(cf.Cf("delete-org", cfOrg, "-f"), cfTimeout).Should(gexec.Exit(0))
+		//Eventually(cf.Cf("delete-user", devUserEmail, "-f"), cfTimeout).Should(gexec.Exit(0))
+		//Eventually(cf.Cf("delete-user", auditorUsername, "-f"), cfTimeout).Should(gexec.Exit(0))
+		//Expect(os.Remove(configFilePath)).To(Succeed())
 	})
 
 	It("sends an email", func() {
 		product := "some-product"
-		serviceInstanceID := "some-service-instance"
+		serviceInstanceID := "some-service-instance-" + uuid.New()[:8]
 		subject := uuid.New()
 		content := "some-content"
 
@@ -133,6 +133,8 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(runningBin, time.Second*15).Should(gexec.Exit(0))
 
+		fmt.Printf("cmd = %#v\n", cmd)
+		
 		var emailContent Content
 		Eventually(func() bool {
 			emailsResp, err := http.Get(fmt.Sprintf("%s/api/v2/messages", mailhogURL))
@@ -149,7 +151,7 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 			}
 
 			return false
-		}, time.Minute*10).Should(BeTrue())
+		}, time.Second*10).Should(BeTrue())
 
 		Expect(emailContent.Headers.ReplyTo).To(ConsistOf(replyTo))
 		Expect(emailContent.Headers.To).To(ConsistOf(devUserEmail))

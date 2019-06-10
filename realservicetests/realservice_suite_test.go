@@ -23,7 +23,7 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
-	gexec.CleanupBuildArtifacts()
+	// gexec.CleanupBuildArtifacts()
 })
 
 func TestRealservice(t *testing.T) {
