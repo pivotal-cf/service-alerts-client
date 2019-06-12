@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
@@ -106,6 +107,8 @@ func (c *ServiceAlertsClient) sendNotification(uaaToken string, notificationRequ
 		return err
 	}
 
+	fmt.Printf("json request %s", string(reqBytes))
+
 	sendNotificationRequestURL, err := joinURL(c.config.Notifications.ServiceURL, fmt.Sprintf("/spaces/%s", spaceGUID), "")
 	req, err := http.NewRequest("POST", sendNotificationRequestURL, bytes.NewReader(reqBytes))
 	if err != nil {
@@ -113,12 +116,23 @@ func (c *ServiceAlertsClient) sendNotification(uaaToken string, notificationRequ
 	}
 
 	req.Header.Set("X-NOTIFICATIONS-VERSION", "1")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", uaaToken))
+	authorizationToken := fmt.Sprintf("Bearer %s", uaaToken)
+
+	fmt.Printf(authorizationToken)
+
+	req.Header.Set("Authorization", authorizationToken)
 	req.Header.Set("Content-Type", "application/json")
 
-	_, responseErr := c.httpClient.doRequestWithRetries("CF Notifications", req)
+	response, responseErr := c.httpClient.doRequestWithRetries("CF Notifications", req)
 	if responseErr != nil {
 		return responseErr
+	}
+	bodyBytes, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		fmt.Printf("could not decode body %s", err.Error())
+		return err
+	} else {
+		fmt.Printf("notification service response body: %s", string(bodyBytes))
 	}
 
 	return nil
@@ -130,12 +144,16 @@ func (c *ServiceAlertsClient) createNotification(product, subject, serviceInstan
 		return SpaceNotificationRequest{}, err
 	}
 
-	return SpaceNotificationRequest{
+	request := SpaceNotificationRequest{
 		KindID:  DummyKindID,
 		Subject: fmt.Sprintf("[Service Alert][%s] %s", product, subject),
 		Text:    textBody,
 		ReplyTo: c.config.Notifications.ReplyTo,
-	}, nil
+	}
+
+	fmt.Printf("space notfication request: %v", request)
+
+	return request, nil
 }
 
 func (c *ServiceAlertsClient) obtainNotificationsClientToken() (string, error) {
