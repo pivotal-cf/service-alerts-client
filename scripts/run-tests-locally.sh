@@ -5,14 +5,14 @@
 # You may obtain a copy of the License at
 # http://www.apache.org/licenses/LICENSE-2.0
 # Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-set -oeux pipefail
+set -oeu pipefail
 
 usage() {
-  echo "Usage: $(basename "$0") [bosh-lite-env-name]"
+  echo "Usage: $(basename "$0") [bosh-lite-env-name] [--skip-deploy]"
   exit 1
 }
 
-if [[ $# -ne 1 ]] ; then
+if [[ $# -lt 1 ]] ; then
   usage
 fi
 
@@ -28,6 +28,8 @@ env_name="$1"
 self="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 parent=`realpath $self/../`
 
-${self}/deploy-notification-on-lite.sh ${env_name}
+if [[ $2 != "--skip-deploy" ]]; then
+  ${self}/deploy-notification-on-lite.sh ${env_name}
+fi
 
 ${parent}/scripts/real-service-tests.sh

@@ -38,6 +38,7 @@ if [[ $exit_code -ne 0 ]]; then
     --secret $notification_client_secret \
     --no-interactive
 fi
+
 #Upload notifications-release
 bosh upload-release "https://github.com/cloudfoundry-incubator/notifications-release/releases/download/v57/notifications-57.tgz"
 
