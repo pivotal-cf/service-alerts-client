@@ -16,7 +16,7 @@ if [[ $# -lt 1 ]] ; then
   usage
 fi
 
-export NOTIFICATIONS_CLIENT_ID="notifications-admin"
+export NOTIFICATIONS_CLIENT_ID="notifications-client"
 export NOTIFICATIONS_CLIENT_SECRET="nutella-jars-are-amazing"
 export MAILHOG_URL="http://35.195.81.151" # deployed on concourse bosh env
 export CF_ADMIN_USERNAME="$CF_USERNAME"
