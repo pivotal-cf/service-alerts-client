@@ -64,8 +64,9 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 		cfAPI := envMustHave("CF_API")
 		cfAdminUsername := envMustHave("CF_ADMIN_USERNAME")
 		cfAdminPassword := envMustHave("CF_ADMIN_PASSWORD")
-		cfOrg = "test-" + uuid.New()
-		cfSpace := "test-" + uuid.New()
+		cfOrg = "test-" + uuid.New()[:7]
+		cfSpace := "test-" + uuid.New()[:7]
+
 		Eventually(cf.Cf("api", cfAPI, "--skip-ssl-validation"), cfTimeout).Should(gexec.Exit(0))
 		Eventually(cf.CfAuth(cfAdminUsername, cfAdminPassword), cfTimeout).Should(gexec.Exit(0))
 		Eventually(cf.Cf("create-org", cfOrg), cfTimeout).Should(gexec.Exit(0))
