@@ -55,7 +55,7 @@ var _ = Describe("sending a service alert to a real CF notifications service ins
 		devUserPassword = "some-password-that-we-use"
 		auditorUsername = "space-auditor@example.com"
 		auditorPassword = "some-password-that-we-use"
-		cfTimeout       = time.Second * 10
+		cfTimeout       = time.Second * 30
 	)
 
 	BeforeEach(func() {
