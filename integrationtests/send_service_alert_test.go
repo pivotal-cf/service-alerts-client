@@ -448,7 +448,7 @@ var _ = Describe("send-service-alert executable", func() {
 					Expect(stderr).To(gbytes.Say("Retrying in"), "expected 2 attempts got 0")
 
 					By("timing out the request")
-					Expect(stderr).To(gbytes.Say(`request canceled \(Client.Timeout exceeded while awaiting headers\)`))
+					Expect(stderr).To(gbytes.Say(`context deadline exceeded \(Client.Timeout exceeded while awaiting headers\)`))
 
 					By("Logging a user error message to stderr")
 					Expect(stderr).To(gbytes.Say(fmt.Sprintf("failed to send notification to org: %s, space: %s", cfOrgName, cfSpaceName)))
